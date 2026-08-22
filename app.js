@@ -6,8 +6,9 @@ const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
   mode:"wordlist",photos:[],extracted:null,
-  reviewQueue:[],reviewIndex:0,reviewFlipped:false,
-  testMode:"meaning",testScope:"all",testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
+  reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,
+  testMode:"meaning",testScope:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
+  transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
   todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
   todaySeen:load(K_TODAY,[])
@@ -24,10 +25,21 @@ function toast(t){const x=$("#toast");x.textContent=t;x.classList.add("show");cl
 function show(id){
   $$(".view").forEach(v=>v.classList.toggle("active",v.id===id));
   $$(".nav").forEach(v=>v.classList.toggle("active",v.dataset.go===id));
-  if(id==="home")renderHome();if(id==="review")startReview();if(id==="test")startTest();if(id==="library")renderLibrary();
+  if(id==="home")renderHome();
+  if(id==="review")startReview();
+  if(id==="test")startTest();
+  if(id==="transform")startTransform();
+  if(id==="sources")renderSources();
+  if(id==="report")renderReport();
+  if(id==="library")renderLibrary();
   scrollTo({top:0,behavior:"smooth"});
 }
-$$("[data-go]").forEach(b=>b.onclick=()=>show(b.dataset.go));$$(".back").forEach(b=>b.onclick=()=>show("home"));
+$$("[data-go]").forEach(b=>b.onclick=()=>{
+  if(b.dataset.resetSource==="1"&&b.dataset.go==="test")S.testSource=null;
+  if(b.dataset.resetSource==="1"&&b.dataset.go==="transform")S.transformSource=null;
+  show(b.dataset.go);
+});
+$$(".back").forEach(b=>b.onclick=()=>show("home"));
 
 function studyTouch(){
   const today=new Date().toISOString().slice(0,10);
@@ -47,6 +59,33 @@ function weakness(w){
     (w.correct||0)*2
   ));
 }
+
+function wordReadiness(w){
+  let score=18;
+  score+=(w.strength||0)*10;
+  score+=Math.min(4,w.correct||0)*7;
+  score+=Math.min(2,w.goodCount||0)*8;
+  if(w.testEnabled===false)score+=24;
+  score-=Math.min(4,w.wrong||0)*9;
+  score-=Math.min(4,w.skipCount||0)*10;
+  if((w.dueAt||0)<=now())score-=5;
+  return Math.max(0,Math.min(100,Math.round(score)));
+}
+function sourceKey(w){
+  const s=String(w.sourceLabel||"").trim();
+  return s||"출처 미지정";
+}
+function sourceGroups(){
+  const map=new Map();
+  for(const w of S.words){
+    const k=sourceKey(w);
+    if(!map.has(k))map.set(k,[]);
+    map.get(k).push(w);
+  }
+  return [...map.entries()].sort((a,b)=>b[1].length-a[1].length);
+}
+function avg(arr,fn){return arr.length?arr.reduce((s,x)=>s+fn(x),0)/arr.length:0}
+function markReviewed(w){w.lastReviewedAt=now()}
 function renderHome(){
   const due=S.words.filter(w=>(w.dueAt||0)<=now()),weak=S.words.filter(w=>weakness(w)>=45),tries=S.meta.correct+S.meta.wrong;
   $("#dueHero").textContent=`복습 ${due.length}개`;$("#totalStat").textContent=S.words.length;$("#weakStat").textContent=weak.length;$("#accStat").textContent=tries?Math.round(S.meta.correct/tries*100)+"%":"-";$("#streak").textContent=S.meta.streak||0;
@@ -721,7 +760,7 @@ function renderToday(){
 /* review */
 function interval(w,g){if(g==="again"){w.strength=Math.max(0,(w.strength||0)-1);w.stability=Math.max(.3,(w.stability||.5)*.55);return 5*60000}if(g==="hard"){w.strength=Math.max(1,w.strength||0);w.stability=Math.min(90,(w.stability||.5)*1.45);return Math.max(30*60000,day(w.stability*.45))}w.strength=Math.min(6,(w.strength||0)+1);w.stability=Math.min(180,(w.stability||.5)*(2.05+w.strength*.08));return day(Math.max(1,w.stability))}
 function applyMemory(w,g){
-  studyTouch();w.seen=(w.seen||0)+1;if(w.goodCount===undefined)w.goodCount=0;if(w.testEnabled===undefined)w.testEnabled=true;
+  studyTouch();markReviewed(w);w.seen=(w.seen||0)+1;if(w.goodCount===undefined)w.goodCount=0;if(w.testEnabled===undefined)w.testEnabled=true;
   if(g==="again")w.wrong=(w.wrong||0)+1;
   if(g==="good"){
     w.correct=(w.correct||0)+1;
@@ -744,11 +783,16 @@ function startReview(shuf=false){
   $("#reviewEmpty").classList.add("hidden");
   $("#reviewArea").classList.remove("hidden");
 
-  const due=S.words
-    .filter(w=>(w.dueAt||0)<=now())
-    .sort((a,b)=>weakness(b)-weakness(a));
-
-  let base=due.length?due:[...S.words].sort((a,b)=>weakness(b)-weakness(a));
+  let base;
+  if(Array.isArray(S.reviewPreset)&&S.reviewPreset.length){
+    base=S.reviewPreset.map(id=>S.words.find(w=>w.id===id)).filter(Boolean);
+    S.reviewPreset=null;
+  }else{
+    const due=S.words
+      .filter(w=>(w.dueAt||0)<=now())
+      .sort((a,b)=>weakness(b)-weakness(a));
+    base=due.length?due:[...S.words].sort((a,b)=>weakness(b)-weakness(a));
+  }
 
   // 시험에서 넘긴 단어는 같은 암기 세션 안에서도 1~2회 더 등장.
   const weighted=[];
@@ -778,8 +822,14 @@ let touch=null;$("#flash").addEventListener("touchstart",e=>{const t=e.changedTo
 $$(".test-mode").forEach(b=>b.onclick=()=>{$$(".test-mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.testMode=b.dataset.test;startTest()});
 $$(".test-scope").forEach(b=>b.onclick=()=>{$$(".test-scope").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.testScope=b.dataset.scope;startTest()});
 $("#restartTest").onclick=startTest;
+$("#clearTestSource").onclick=()=>{S.testSource=null;startTest()};
+
 function startTest(){
-  let eligible=S.words.filter(w=>w.testEnabled!==false);if(S.testScope==="star")eligible=eligible.filter(w=>w.star);
+  $("#testSourceBanner").classList.toggle("hidden",!S.testSource);
+  $("#testSourceName").textContent=S.testSource||"";
+  let eligible=S.words.filter(w=>w.testEnabled!==false);
+  if(S.testSource)eligible=eligible.filter(w=>sourceKey(w)===S.testSource);
+  if(S.testScope==="star")eligible=eligible.filter(w=>w.star);
   if(!eligible.length){$("#testEmpty").classList.remove("hidden");$("#testArea").classList.add("hidden");$("#testEmptyTitle").textContent=S.testScope==="star"?"시험 가능한 즐겨찾기가 없어":"테스트 목록이 비어 있어";$("#testEmptyText").textContent="단어 보관함에서 ‘시험 넣기’를 누르면 다시 출제돼.";return}
   $("#testEmpty").classList.add("hidden");$("#testArea").classList.remove("hidden");const ordered=[...eligible].sort((a,b)=>weakness(b)-weakness(a)),top=ordered.slice(0,Math.min(5,ordered.length)),rest=shuffle(ordered.slice(top.length));S.testQueue=shuffle(top).concat(rest).slice(0,Math.min(10,eligible.length));S.testIndex=0;S.testCorrect=0;renderTest();
 }
@@ -817,7 +867,7 @@ $("#gradeBtn").onclick=async()=>{
 사전 표현과 달라도 실제 독해에서 핵심 의미 파악에 지장이 없으면 correct, 방향은 맞지만 오해 가능하면 almost, 다른 뜻이면 wrong.
 JSON 하나만:{"verdict":"correct"|"almost"|"wrong","reason":"한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;d=parseAIJSON(responseText(await openai({model:taskModel("fast"),reasoning:{effort:"none"},text:{verbosity:"low"},max_output_tokens:350,input:prompt},{timeoutMs:30000,retries:1})))}
     }
-    const v=d.verdict||"wrong",ok=v==="correct";if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");
+    const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");
   }catch(e){
     toast(e.message);
     btn.disabled=false;
@@ -829,6 +879,7 @@ $("#skipBtn").onclick=()=>{
   const w=S.testQueue[S.testIndex];
   if(!w)return;
 
+  markReviewed(w);
   w.skipCount=(w.skipCount||0)+1;
   w.seen=(w.seen||0)+1;
 
@@ -848,6 +899,256 @@ $("#skipBtn").onclick=()=>{
 };
 
 $("#nextBtn").onclick=()=>{S.testIndex++;renderTest()};
+
+
+/* school-exam transformation mode */
+function relationForType(w,type){
+  if(type==="synonym")return w.synonyms||[];
+  if(type==="antonym")return w.antonyms||[];
+  if(type==="derivative")return w.derivatives||[];
+  return [];
+}
+function availableTransformTypes(w){
+  const a=[];
+  if((w.synonyms||[]).length)a.push("synonym");
+  if((w.antonyms||[]).length)a.push("antonym");
+  if((w.derivatives||[]).length)a.push("derivative");
+  return a;
+}
+function buildTransformQueue(){
+  let words=S.words.filter(w=>availableTransformTypes(w).length);
+  if(S.transformSource)words=words.filter(w=>sourceKey(w)===S.transformSource);
+  const qs=[];
+  for(const w of shuffle(words)){
+    let types=availableTransformTypes(w);
+    if(S.transformType!=="mixed")types=types.filter(t=>t===S.transformType);
+    if(!types.length)continue;
+    const type=types[Math.floor(Math.random()*types.length)];
+    const rel=relationForType(w,type);
+    if(!rel.length)continue;
+    const correct=rel[Math.floor(Math.random()*rel.length)];
+    const pool=[];
+    for(const other of words){
+      if(other.id===w.id)continue;
+      pool.push(...relationForType(other,type));
+      pool.push(other.term);
+    }
+    const distractors=shuffle([...new Set(pool.filter(x=>norm(x)!==norm(correct)&&norm(x)!==norm(w.term)))]);
+    const options=shuffle([correct,...distractors.slice(0,3)]);
+    while(options.length<4){
+      const filler=S.words.find(x=>!options.some(o=>norm(o)===norm(x.term))&&norm(x.term)!==norm(w.term));
+      if(!filler)break;
+      options.push(filler.term);
+    }
+    qs.push({wordId:w.id,type,correct,options:shuffle([...new Set(options)]).slice(0,4)});
+    if(qs.length>=12)break;
+  }
+  return qs;
+}
+function transformTypeLabel(type){
+  return type==="synonym"?"동의어":type==="antonym"?"반의어":"파생어";
+}
+function transformQuestionText(w,type){
+  if(type==="synonym")return `“${w.term}”와 의미가 가장 가까운 것은?`;
+  if(type==="antonym")return `“${w.term}”와 의미가 가장 반대인 것은?`;
+  return `“${w.term}”의 파생형으로 가장 적절한 것은?`;
+}
+$$(".transform-type").forEach(b=>b.onclick=()=>{
+  $$(".transform-type").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  S.transformType=b.dataset.transformType;
+  startTransform();
+});
+$("#restartTransform").onclick=startTransform;
+$("#clearTransformSource").onclick=()=>{S.transformSource=null;startTransform()};
+function startTransform(){
+  $("#transformSourceBanner").classList.toggle("hidden",!S.transformSource);
+  $("#transformSourceName").textContent=S.transformSource||"";
+  S.transformQueue=buildTransformQueue();
+  S.transformIndex=0;
+  S.transformCorrect=0;
+  if(!S.transformQueue.length){
+    $("#transformEmpty").classList.remove("hidden");
+    $("#transformArea").classList.add("hidden");
+    return;
+  }
+  $("#transformEmpty").classList.add("hidden");
+  $("#transformArea").classList.remove("hidden");
+  renderTransform();
+}
+function renderTransform(){
+  if(S.transformIndex>=S.transformQueue.length){
+    toast(`변형어 모드 완료 ${S.transformCorrect}/${S.transformQueue.length}`);
+    renderReport();
+    show("report");
+    return;
+  }
+  const q=S.transformQueue[S.transformIndex],w=S.words.find(x=>x.id===q.wordId);
+  $("#transformNo").textContent=`${S.transformIndex+1} / ${S.transformQueue.length}`;
+  $("#transformScore").textContent=`${S.transformCorrect} correct`;
+  $("#transformKind").textContent=transformTypeLabel(q.type);
+  $("#transformPrompt").textContent=transformQuestionText(w,q.type);
+  $("#transformOptions").innerHTML=q.options.map(o=>`<button class="transform-option" data-transform-answer="${esc(o)}">${esc(o)}</button>`).join("");
+  $("#transformExplain").className="result hidden";
+  $("#transformNextBtn").classList.add("hidden");
+  $("#transformSkipBtn").disabled=false;
+  $$("[data-transform-answer]").forEach(btn=>btn.onclick=()=>gradeTransform(btn.dataset.transformAnswer));
+}
+function gradeTransform(answer){
+  const q=S.transformQueue[S.transformIndex],w=S.words.find(x=>x.id===q.wordId);
+  if(!w)return;
+  const ok=norm(answer)===norm(q.correct);
+  markReviewed(w);
+  if(ok){
+    S.transformCorrect++;
+    S.meta.transformCorrect=(S.meta.transformCorrect||0)+1;
+    w.correct=(w.correct||0)+1;
+  }else{
+    S.meta.transformWrong=(S.meta.transformWrong||0)+1;
+    w.wrong=(w.wrong||0)+1;
+    w.dueAt=now();
+  }
+  studyTouch();save();
+  $$("[data-transform-answer]").forEach(b=>{
+    b.disabled=true;
+    if(norm(b.dataset.transformAnswer)===norm(q.correct))b.classList.add("correct");
+    else if(norm(b.dataset.transformAnswer)===norm(answer)&&!ok)b.classList.add("wrong");
+  });
+  $("#transformExplain").className=`result ${ok?"correct":"wrong"}`;
+  $("#transformExplain").innerHTML=`<b>${ok?"정답 ✅":"오답 ✕"}</b><br>${esc(w.term)} → ${transformTypeLabel(q.type)}: <b>${esc(q.correct)}</b>`;
+  $("#transformNextBtn").classList.remove("hidden");
+  $("#transformSkipBtn").disabled=true;
+}
+$("#transformSkipBtn").onclick=()=>{
+  const q=S.transformQueue[S.transformIndex],w=S.words.find(x=>x.id===q.wordId);
+  if(w){
+    markReviewed(w);
+    w.skipCount=(w.skipCount||0)+1;
+    w.dueAt=now();
+    w.testEnabled=true;
+    studyTouch();save();
+  }
+  toast("넘긴 단어는 걷기 암기에서 더 자주 나와.");
+  S.transformIndex++;
+  renderTransform();
+};
+$("#transformNextBtn").onclick=()=>{S.transformIndex++;renderTransform()};
+
+/* source decks */
+function renderSources(){
+  const groups=sourceGroups();
+  const box=$("#sourceGroups");
+  if(!groups.length){
+    box.innerHTML=`<div class="empty-state"><div class="big-ico">🗂️</div><h3>아직 묶을 단어가 없어</h3><p>사진 추가나 직접 입력에서 출처 이름을 적으면 자동으로 지문별로 묶여.</p></div>`;
+    return;
+  }
+  box.innerHTML=groups.map(([name,words])=>{
+    const ready=Math.round(avg(words,wordReadiness));
+    const risk=words.filter(w=>weakness(w)>=60).length;
+    const graduated=words.filter(w=>w.testEnabled===false).length;
+    const encoded=encodeURIComponent(name);
+    return `<div class="source-card">
+      <div class="source-card-head">
+        <div><h3>${esc(name)}</h3><p>위험 ${risk}개 · 시험 졸업 ${graduated}개 · 준비도 ${ready}%</p></div>
+        <span class="source-count">${words.length} words</span>
+      </div>
+      <div class="source-mini-progress"><span style="width:${ready}%"></span></div>
+      <div class="source-actions">
+        <button data-source-test="${encoded}">⚡ 이 지문만 시험</button>
+        <button data-source-transform="${encoded}">🔁 이 지문 변형어</button>
+      </div>
+    </div>`;
+  }).join("");
+  $$("[data-source-test]").forEach(b=>b.onclick=()=>{
+    S.testSource=decodeURIComponent(b.dataset.sourceTest);
+    S.testScope="all";
+    $$(".test-scope").forEach(x=>x.classList.toggle("active",x.dataset.scope==="all"));
+    show("test");
+  });
+  $$("[data-source-transform]").forEach(b=>b.onclick=()=>{
+    S.transformSource=decodeURIComponent(b.dataset.sourceTransform);
+    show("transform");
+  });
+}
+
+/* study report */
+function editDistance(a,b){
+  a=norm(a);b=norm(b);
+  const dp=Array(b.length+1).fill(0).map((_,i)=>i);
+  for(let i=1;i<=a.length;i++){
+    let prev=dp[0];dp[0]=i;
+    for(let j=1;j<=b.length;j++){
+      const tmp=dp[j];
+      dp[j]=Math.min(dp[j]+1,dp[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));
+      prev=tmp;
+    }
+  }
+  return dp[b.length];
+}
+function confusionCandidates(){
+  const arr=[];
+  for(let i=0;i<S.words.length;i++){
+    for(let j=i+1;j<S.words.length;j++){
+      const a=S.words[i],b=S.words[j];
+      if(a.term.length<4||b.term.length<4)continue;
+      const d=editDistance(a.term,b.term);
+      const prefix=norm(a.term).slice(0,3)===norm(b.term).slice(0,3);
+      if(d===1||(prefix&&d<=2)){
+        arr.push({a,b,d,risk:weakness(a)+weakness(b)});
+      }
+    }
+  }
+  return arr.sort((x,y)=>y.risk-x.risk).slice(0,6);
+}
+function renderReport(){
+  const total=S.words.length;
+  const readiness=total?Math.round(avg(S.words,wordReadiness)):0;
+  const mastered=S.words.filter(w=>w.testEnabled===false).length;
+  const risk=S.words.filter(w=>weakness(w)>=60).length;
+  const sevenDays=now()-day(7);
+  const recent=S.words.filter(w=>(w.lastReviewedAt||w.createdAt||0)>=sevenDays).length;
+  const tries=(S.meta.correct||0)+(S.meta.wrong||0);
+  const accuracy=tries?Math.round((S.meta.correct||0)/tries*100)+"%":"-";
+
+  $("#readinessPct").textContent=readiness;
+  $("#readinessRingText").textContent=readiness+"%";
+  $("#readinessRing").style.setProperty("--pct",readiness);
+  $("#reportMastered").textContent=mastered;
+  $("#reportRisk").textContent=risk;
+  $("#reportRecent").textContent=recent;
+  $("#reportAccuracy").textContent=accuracy;
+
+  const danger=[...S.words].sort((a,b)=>weakness(b)-weakness(a)).slice(0,8);
+  $("#dangerWords").innerHTML=danger.length?danger.map(w=>`<div class="report-row">
+    <div class="main"><b>${esc(w.term)}</b><small>${esc((w.meanings||[]).join(", "))} · 넘김 ${w.skipCount||0} · 오답 ${w.wrong||0}</small></div>
+    <span class="risk-pill">위험 ${weakness(w)}</span>
+  </div>`).join(""):`<div class="fine">아직 분석할 단어가 없어.</div>`;
+
+  const pairs=confusionCandidates();
+  $("#confusionPairs").innerHTML=pairs.length?pairs.map(x=>`<div class="report-row">
+    <div class="main"><b>${esc(x.a.term)} ↔ ${esc(x.b.term)}</b><small>${esc(x.a.meanings?.[0]||"")} / ${esc(x.b.meanings?.[0]||"")}</small></div>
+    <span class="risk-pill">주의</span>
+  </div>`).join(""):`<div class="fine">철자가 비슷한 단어쌍이 아직 없어.</div>`;
+
+  const groups=sourceGroups();
+  $("#sourceReadiness").innerHTML=groups.length?groups.slice(0,8).map(([name,words])=>{
+    const r=Math.round(avg(words,wordReadiness));
+    return `<div class="report-row">
+      <div class="main"><b>${esc(name)}</b><small>${words.length}개 단어</small></div>
+      <span class="${r>=70?"ready-pill":"risk-pill"}">${r}%</span>
+    </div>`;
+  }).join(""):`<div class="fine">출처별 데이터가 아직 없어.</div>`;
+}
+$("#quickStudyBtn").onclick=()=>{
+  const pool=[...S.words]
+    .filter(w=>w.testEnabled!==false||weakness(w)>=45)
+    .sort((a,b)=>weakness(b)-weakness(a))
+    .slice(0,12);
+  if(!pool.length)return toast("복습할 단어가 없어.");
+  S.reviewPreset=pool.map(w=>w.id);
+  toast(`위험 단어 ${pool.length}개로 10분 집중 시작`);
+  show("review");
+};
 
 /* library */
 function renderLibrary(){
@@ -877,6 +1178,7 @@ function migrate(){
     if(w.testEnabled===undefined)w.testEnabled=true;
     if(w.goodCount===undefined)w.goodCount=0;
     if(w.skipCount===undefined)w.skipCount=0;
+    if(w.lastReviewedAt===undefined)w.lastReviewedAt=0;
     if(!Array.isArray(w.synonyms))w.synonyms=[];
     if(!Array.isArray(w.antonyms))w.antonyms=[];
     if(!Array.isArray(w.derivatives))w.derivatives=[];
@@ -886,7 +1188,7 @@ migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classLi
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=055",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=060",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

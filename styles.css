@@ -200,3 +200,48 @@ nav{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(760px,
 @media(max-width:420px){
   .test-action-row{grid-template-columns:1fr}
 }
+
+.action.transform-action{background:#fff6ee;border-color:#f1dfcc}
+.action.source-action{background:#eff8f5;border-color:#d6ebe3}
+.action.report-action{background:#191919;color:#fff;border-color:#191919}
+.action.report-action small{color:#aaa}
+.action.wide{grid-column:1/-1;min-height:98px}
+.source-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#eef4ff;color:#315ca7;border:1px solid #d7e3ff;border-radius:13px;padding:9px 11px;margin:8px 0;font-size:12px}
+.source-banner button{border:0;background:#fff;border-radius:99px;padding:6px 9px;color:#315ca7;font-size:10px;font-weight:800}
+.transform-tabs{display:flex;gap:6px;overflow:auto;margin:8px 0 11px}
+.transform-type{border:1px solid var(--line);background:#fff;border-radius:99px;padding:8px 11px;white-space:nowrap;font-size:12px;font-weight:800;color:var(--muted)}
+.transform-type.active{background:#171717;color:#fff;border-color:#171717}
+.transform-prompt{font-size:22px;line-height:1.4;margin:15px 0 14px}
+.transform-options{display:grid;gap:8px;text-align:left}
+.transform-option{width:100%;border:1px solid var(--line);background:#fff;border-radius:14px;padding:13px;text-align:left;font-weight:750}
+.transform-option.correct{background:#eaf8ef;border-color:#bfe2cd;color:var(--green)}
+.transform-option.wrong{background:#fff0ee;border-color:#efc8c2;color:var(--red)}
+.transform-option:disabled{opacity:1}
+.source-groups{display:grid;gap:9px}
+.source-card{background:#fff;border:1px solid var(--line);border-radius:19px;padding:15px}
+.source-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.source-card h3{margin:0 0 5px;font-size:17px;word-break:break-word}
+.source-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.source-count{background:var(--soft);border-radius:99px;padding:6px 8px;font-size:10px;white-space:nowrap}
+.source-mini-progress{height:6px;background:#e8e4de;border-radius:99px;overflow:hidden;margin:11px 0}
+.source-mini-progress span{display:block;height:100%;background:#171717}
+.source-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.source-actions button{border:1px solid var(--line);background:var(--soft);border-radius:12px;padding:9px;font-size:11px;font-weight:800}
+.report-hero{background:#171717;color:#fff;border-radius:25px;padding:21px;display:flex;justify-content:space-between;align-items:center}
+.report-eye{color:#999}
+.report-hero h2{font-size:44px;margin:6px 0 0}
+.report-hero p{margin:0;color:#aaa}
+.readiness-ring{--pct:0;position:relative;width:92px;height:92px;border-radius:50%;background:conic-gradient(#fff calc(var(--pct)*1%),#3c3c3c 0);display:grid;place-items:center}
+.readiness-ring:after{content:"";position:absolute;inset:8px;background:#171717;border-radius:50%}
+.readiness-ring span{position:relative;z-index:1;font-weight:850}
+.report-note{margin:7px 4px 0}
+.report-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.report-stat{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px}
+.report-stat b{display:block;font-size:22px}.report-stat span{font-size:10px;color:var(--muted)}
+.report-list{display:grid;gap:7px}
+.report-row{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+.report-row:last-child{border-bottom:0}
+.report-row .main{min-width:0}.report-row b{display:block}.report-row small{display:block;color:var(--muted);margin-top:2px;line-height:1.4}
+.risk-pill{font-size:10px;font-weight:850;border-radius:99px;padding:6px 8px;background:#fff0ee;color:var(--red);white-space:nowrap}
+.ready-pill{font-size:10px;font-weight:850;border-radius:99px;padding:6px 8px;background:#eaf8ef;color:var(--green);white-space:nowrap}
+@media(max-width:420px){.source-actions{grid-template-columns:1fr}.report-hero h2{font-size:38px}.readiness-ring{width:82px;height:82px}}

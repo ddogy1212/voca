@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=055">
+  <link rel="stylesheet" href="./styles.css?v=060">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.5.5 TEST SKIP <span class="build-badge">BUILD 055</span></small>
+    <small>VOCABWALK AI · v0.6 SCORE <span class="build-badge">BUILD 060</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -46,14 +46,23 @@
       <button class="action primary" data-go="review">
         <span class="ico">🚶</span><b>걷기 암기</b><small>큰 글씨 · 발음 · 스와이프</small>
       </button>
-      <button class="action" data-go="test">
+      <button class="action" data-go="test" data-reset-source="1">
         <span class="ico">⚡</span><b>AI 랜덤 테스트</b><small>표현이 달라도 의미로 채점</small>
+      </button>
+      <button class="action transform-action" data-go="transform" data-reset-source="1">
+        <span class="ico">🔁</span><b>내신 변형어 모드</b><small>동의어 · 반의어 · 파생어 집중</small>
       </button>
       <button class="action today-action" data-go="today">
         <span class="ico">🌎</span><b>오늘의 단어</b><small>수능·모의고사 + 내 학습 단어 기반</small>
       </button>
+      <button class="action source-action" data-go="sources">
+        <span class="ico">🗂️</span><b>지문별 단어장</b><small>자료별 묶음 · 그 지문만 시험</small>
+      </button>
       <button class="action" data-go="library">
         <span class="ico">📚</span><b>단어 보관함</b><small>오답 · 중요 · 시험목록 관리</small>
+      </button>
+      <button class="action report-action wide" data-go="report">
+        <span class="ico">📊</span><b>학습 리포트</b><small>시험 준비도 · 위험 단어 · 지금 10분 공부</small>
       </button>
     </div>
 
@@ -163,6 +172,98 @@ compelling = 설득력 있는"></textarea>
     <button id="moreTodayBtn" class="big hidden">＋ 5개 더 계속 알려줘</button>
   </section>
 
+
+  <section id="transform" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>SCHOOL EXAM</small><h2>내신 변형어 모드</h2></div>
+      <button id="restartTransform" class="pill">새로</button>
+    </div>
+
+    <div id="transformSourceBanner" class="source-banner hidden">
+      <span>현재 범위: <b id="transformSourceName"></b></span>
+      <button id="clearTransformSource" type="button">전체 단어로</button>
+    </div>
+
+    <div class="transform-tabs">
+      <button class="transform-type active" data-transform-type="mixed">섞어서</button>
+      <button class="transform-type" data-transform-type="synonym">동의어</button>
+      <button class="transform-type" data-transform-type="antonym">반의어</button>
+      <button class="transform-type" data-transform-type="derivative">파생어</button>
+    </div>
+
+    <div id="transformEmpty" class="empty-state hidden">
+      <div class="big-ico">🔁</div>
+      <h3>변형어 데이터가 아직 부족해</h3>
+      <p>사진 인식이나 오늘의 단어에서 동의어·반의어·파생어가 쌓이면 여기서 바로 문제로 나와.</p>
+    </div>
+
+    <div id="transformArea">
+      <div class="test-meta">
+        <span id="transformNo">1 / 10</span>
+        <span id="transformScore">0 correct</span>
+      </div>
+      <div class="test-card transform-card">
+        <span id="transformKind" class="source-tag">동의어</span>
+        <h3 id="transformPrompt" class="transform-prompt"></h3>
+        <div id="transformOptions" class="transform-options"></div>
+        <button id="transformSkipBtn" class="big skip-btn">모르겠음 · 넘기기</button>
+        <div id="transformExplain" class="result hidden"></div>
+        <button id="transformNextBtn" class="big hidden">다음 문제</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="sources" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>SOURCE DECKS</small><h2>지문별 단어장</h2></div>
+    </div>
+    <p class="fine">사진 추가할 때 적은 출처 이름을 기준으로 자동으로 묶어. 같은 지문·프린트만 따로 시험볼 수 있어.</p>
+    <div id="sourceGroups" class="source-groups"></div>
+  </section>
+
+  <section id="report" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>STUDY REPORT</small><h2>학습 리포트</h2></div>
+    </div>
+
+    <div class="report-hero">
+      <div>
+        <span class="eyebrow report-eye">학습 기록 기반</span>
+        <h2><span id="readinessPct">0</span>%</h2>
+        <p>시험 준비도</p>
+      </div>
+      <div class="readiness-ring" id="readinessRing"><span id="readinessRingText">0%</span></div>
+    </div>
+    <p class="fine report-note">※ 실제 시험 점수 예측이 아니라 현재 단어 학습 기록을 바탕으로 계산한 준비도야.</p>
+
+    <div class="report-stats">
+      <div class="report-stat"><b id="reportMastered">0</b><span>시험 졸업</span></div>
+      <div class="report-stat"><b id="reportRisk">0</b><span>위험 단어</span></div>
+      <div class="report-stat"><b id="reportRecent">0</b><span>최근 7일 학습/추가</span></div>
+      <div class="report-stat"><b id="reportAccuracy">-</b><span>일반 테스트 정답률</span></div>
+    </div>
+
+    <button id="quickStudyBtn" class="big dark">⏱️ 지금 10분 공부 · 위험 단어부터</button>
+
+    <div class="panel">
+      <div class="section-head no-top"><h3>🚨 지금 가장 위험한 단어</h3></div>
+      <div id="dangerWords" class="report-list"></div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head no-top"><h3>🌀 헷갈릴 가능성이 큰 단어</h3></div>
+      <div id="confusionPairs" class="report-list"></div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head no-top"><h3>🗂️ 자료별 준비도</h3></div>
+      <div id="sourceReadiness" class="report-list"></div>
+    </div>
+  </section>
+
   <section id="review" class="view">
     <div class="view-head">
       <button class="back">←</button>
@@ -214,6 +315,10 @@ compelling = 설득력 있는"></textarea>
     <div class="seg">
       <button class="test-scope active" data-scope="all">전체 시험목록</button>
       <button class="test-scope" data-scope="star">★ 즐겨찾기만</button>
+    </div>
+    <div id="testSourceBanner" class="source-banner hidden">
+      <span>현재 범위: <b id="testSourceName"></b></span>
+      <button id="clearTestSource" type="button">전체 단어로</button>
     </div>
     <p class="fine">걷기 암기에서 ‘앎’ 2회가 된 단어는 자동으로 시험에서 빠져. 보관함에서 언제든 다시 넣을 수 있어.</p>
 
@@ -294,6 +399,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=055"></script>
+<script src="./app.js?v=060"></script>
 </body>
 </html>
