@@ -125,34 +125,186 @@ $("#imageInput").onchange=e=>addFiles([...e.target.files]);
 const dz=$("#dropZone");
 ["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("dragging")}));
 ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("dragging")}));
-dz.addEventListener("drop",e=>addFiles([...e.dataTransfer.files].filter(f=>f.type.startsWith("image/"))));
+dz.addEventListener("drop",e=>addFiles([...e.dataTransfer.files]));
+function likelyImageFile(f){
+  const type=String(f?.type||"").toLowerCase();
+  const name=String(f?.name||"").toLowerCase();
+  return type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(name);
+}
 async function addFiles(files){
-  const room=8-S.photos.length;if(room<=0)return toast("한 번에 최대 8장이야.");
-  const accepted=files.slice(0,room);
+  const room=8-S.photos.length;
+  if(room<=0)return toast("한 번에 최대 8장이야.");
+
+  const accepted=files.filter(likelyImageFile).slice(0,room);
+  if(!accepted.length)return toast("사진 파일을 찾지 못했어.");
+
+  let added=0;
   for(const f of accepted){
-    if(!/^image\/(png|jpeg|webp)$/i.test(f.type))continue;
-    if(f.size>20*1024*1024){toast(`${f.name}: 20MB 초과라 제외`);continue}
-    try{
-      const prepared=await prepareImageForHighDetail(f);
-      S.photos.push({id:uid(),name:f.name,size:prepared.bytes,data:prepared.data,originalSize:f.size});
-    }catch{toast(`${f.name}: 사진 준비 실패`)}
+    if((f.size||0)>25*1024*1024){
+      toast(`${f.name}: 25MB 초과라 제외`);
+      continue;
+    }
+
+    // 핵심 수정:
+    // 사진을 고른 즉시 목록에 넣는다.
+    // 무거운 리사이즈/변환은 'AI 인식'을 눌렀을 때만 한다.
+    const preview=URL.createObjectURL(f);
+    S.photos.push({
+      id:uid(),
+      name:f.name||`사진 ${S.photos.length+1}`,
+      size:f.size||0,
+      originalSize:f.size||0,
+      file:f,
+      preview,
+      data:null,
+      preparedBytes:0
+    });
+    added++;
   }
-  renderPhotos();$("#imageInput").value="";
+
+  renderPhotos();
+  $("#imageInput").value="";
+  if(added)toast(`${added}장 추가됨 📸`);
 }
-function fileToData(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)})}
-function loadImage(src){return new Promise((ok,no)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=no;im.src=src})}
-function canvasToData(canvas,quality=.9){return new Promise((ok,no)=>canvas.toBlob(async blob=>{if(!blob)return no(Error("이미지 변환 실패"));ok({data:await fileToData(blob),bytes:blob.size})},"image/jpeg",quality))}
+
+function renderPhotos(){
+  const box=$("#photoList");
+  box.classList.toggle("hidden",!S.photos.length);
+  box.innerHTML=S.photos.map((p,i)=>`
+    <div class="photo-item">
+      <img src="${p.preview||p.data||""}" alt="선택 사진 ${i+1}">
+      <button data-remove="${p.id}" aria-label="사진 삭제">×</button>
+      <span>${i+1}. ${esc(p.name)}</span>
+    </div>
+  `).join("");
+
+  $$("[data-remove]").forEach(b=>b.onclick=e=>{
+    e.preventDefault();
+    const found=S.photos.find(p=>p.id===b.dataset.remove);
+    if(found?.preview)URL.revokeObjectURL(found.preview);
+    S.photos=S.photos.filter(p=>p.id!==b.dataset.remove);
+    renderPhotos();
+  });
+
+  $("#analyzeBtn").disabled=!S.photos.length;
+}
+
+function fileToData(f){
+  return new Promise((ok,no)=>{
+    const r=new FileReader();
+    r.onload=()=>ok(r.result);
+    r.onerror=no;
+    r.readAsDataURL(f);
+  });
+}
+
+function loadImageFromFile(file){
+  return new Promise(async(ok,no)=>{
+    try{
+      if("createImageBitmap" in window){
+        const bm=await createImageBitmap(file);
+        return ok({
+          source:bm,
+          width:bm.width,
+          height:bm.height,
+          close:()=>bm.close?.()
+        });
+      }
+    }catch{}
+
+    const url=URL.createObjectURL(file);
+    const im=new Image();
+    im.onload=()=>ok({
+      source:im,
+      width:im.naturalWidth||im.width,
+      height:im.naturalHeight||im.height,
+      close:()=>URL.revokeObjectURL(url)
+    });
+    im.onerror=()=>{
+      URL.revokeObjectURL(url);
+      no(Error("이 사진 형식은 브라우저에서 열 수 없어."));
+    };
+    im.src=url;
+  });
+}
+
+function canvasToData(canvas,quality=.92){
+  return new Promise((ok,no)=>canvas.toBlob(async blob=>{
+    if(!blob)return no(Error("이미지 변환 실패"));
+    ok({data:await fileToData(blob),bytes:blob.size});
+  },"image/jpeg",quality));
+}
+
 async function prepareImageForHighDetail(file){
-  const raw=await fileToData(file),im=await loadImage(raw),pixels=im.width*im.height;
-  const scale=Math.min(1,2048/Math.max(im.width,im.height),Math.sqrt(2500000/Math.max(1,pixels)));
-  if(scale>=.995 && file.size<=2600000)return {data:raw,bytes:file.size};
-  const c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));
-  c.getContext("2d",{alpha:false}).drawImage(im,0,0,c.width,c.height);
-  return canvasToData(c,.92);
+  const type=String(file.type||"").toLowerCase();
+
+  // 이미 작고 API가 직접 받을 수 있는 형식이면 재인코딩하지 않음
+  if(/image\/(jpeg|jpg|png|webp)/i.test(type) && file.size<=2400000){
+    return {data:await fileToData(file),bytes:file.size};
+  }
+
+  let decoded;
+  try{
+    decoded=await loadImageFromFile(file);
+  }catch(e){
+    if(/heic|heif/i.test(type+" "+file.name)){
+      throw Error("HEIC/HEIF 사진을 이 브라우저가 변환하지 못했어. 갤럭시 카메라의 '고효율 사진'을 잠시 끄고 JPEG로 찍어줘.");
+    }
+    throw e;
+  }
+
+  try{
+    const pixels=decoded.width*decoded.height;
+    const scale=Math.min(
+      1,
+      2048/Math.max(decoded.width,decoded.height),
+      Math.sqrt(2500000/Math.max(1,pixels))
+    );
+
+    const c=document.createElement("canvas");
+    c.width=Math.max(1,Math.round(decoded.width*scale));
+    c.height=Math.max(1,Math.round(decoded.height*scale));
+
+    const ctx=c.getContext("2d",{alpha:false});
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(decoded.source,0,0,c.width,c.height);
+
+    return await canvasToData(c,.92);
+  }finally{
+    decoded.close?.();
+  }
 }
+
+async function prepareSelectedPhotosForApi(){
+  for(let i=0;i<S.photos.length;i++){
+    const p=S.photos[i];
+    if(p.data)continue;
+
+    const pct=5+Math.round(((i+1)/S.photos.length)*20);
+    setProgress(
+      "analysis",
+      pct,
+      `사진 준비 ${i+1}/${S.photos.length}`,
+      `${p.name}을 AI 전송용으로 준비하고 있어.`
+    );
+
+    const prepared=await prepareImageForHighDetail(p.file);
+    p.data=prepared.data;
+    p.preparedBytes=prepared.bytes;
+  }
+}
+
 function imageContent(prefix=""){
-  const c=[];S.photos.forEach((p,i)=>{c.push({type:"input_text",text:`${prefix}사진 ${i+1}: ${p.name}`});c.push({type:"input_image",image_url:p.data,detail:"high"})});return c;
+  const c=[];
+  S.photos.forEach((p,i)=>{
+    if(!p.data)throw Error(`${p.name} 사진 준비가 끝나지 않았어.`);
+    c.push({type:"input_text",text:`${prefix}사진 ${i+1}: ${p.name}`});
+    c.push({type:"input_image",image_url:p.data,detail:"high"});
+  });
+  return c;
 }
+
 function extractionPrompt(){
   const source=$("#sourceLabel").value.trim();
   if(S.mode==="passage")return `너는 한국 고등학교 영어 내신/수능 독해 어휘 코치다.
@@ -186,12 +338,15 @@ function onePassPhotoPrompt(){
 }
 $("#analyzeBtn").onclick=async()=>{
   if(!S.photos.length||!needApi())return;
-  const total=S.photos.reduce((a,p)=>a+p.size,0);
-  if(total>18*1024*1024)return toast("최적화 후에도 사진이 많아. 4장씩 나눠 해줘.");
-  const btn=$("#analyzeBtn");btn.disabled=true;$("#extractPanel").classList.add("hidden");
-  startProgress("analysis","사진 준비 완료","AI가 사진을 읽고 검색검증까지 한 번에 처리해.",6,91);
+  const btn=$("#analyzeBtn");
+  btn.disabled=true;
+  $("#extractPanel").classList.add("hidden");
+  startProgress("analysis","사진 준비 중","선택한 사진을 확인하고 있어.",3,91);
   try{
-    setProgress("analysis",12,"AI로 전송 중",`${S.photos.length}장 · 고해상도 분석용으로 최적화했어.`);
+    await prepareSelectedPhotosForApi();
+    const total=S.photos.reduce((a,p)=>a+(p.preparedBytes||p.size||0),0);
+    if(total>18*1024*1024)throw Error("최적화 후에도 사진 용량이 커. 4장씩 나눠서 해줘.");
+    setProgress("analysis",27,"AI로 전송 중",`${S.photos.length}장 준비 완료 · 사진 인식과 검색 검증을 시작해.`);
     const result=await openai({
       model:taskModel("photo"),
       reasoning:{effort:"none"},
@@ -226,7 +381,7 @@ function renderExtract(){
 }
 $("#selectAll").onclick=()=>$$("[data-pick]").forEach(x=>x.checked=true);
 function makeWord(x){
-  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,acceptedAnswers:[],goodCount:0,testEnabled:true};
+  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,testEnabled:true};
 }
 function addWord(x){
   if(!x.term)return false;const old=S.words.find(w=>norm(w.term)===norm(x.term));
@@ -236,7 +391,9 @@ function addWord(x){
 $("#savePicked").onclick=()=>{
   const d=S.extracted||{};if(!d.webVerified)return toast("웹 검색 검증이 끝난 결과만 저장할 수 있어.");
   const arr=[];(d.items||[]).forEach((x,i)=>{$(`[data-pick="m${i}"]`)?.checked&&arr.push(x)});(d.extraItems||[]).forEach((x,i)=>{$(`[data-pick="e${i}"]`)?.checked&&arr.push(x)});
-  let n=0;arr.forEach(x=>{if(addWord(x))n++});save();toast(`${n}개 새로 저장`);S.photos=[];renderPhotos();show("home");
+  let n=0;arr.forEach(x=>{if(addWord(x))n++});
+  S.photos.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview)});
+  save();toast(`${n}개 새로 저장`);S.photos=[];renderPhotos();show("home");
 };
 
 /* Today words — v0.5: 15개 캐시 후 5개씩 즉시 표시 */
@@ -342,7 +499,7 @@ function renderTest(){
   if(S.testIndex>=S.testQueue.length){toast(`테스트 완료 ${S.testCorrect}/${S.testQueue.length}`);show("home");return}
   const w=S.testQueue[S.testIndex];$("#testNo").textContent=`${S.testIndex+1} / ${S.testQueue.length}`;$("#testScore").textContent=`${S.testCorrect} correct`;
   if(S.testMode==="meaning"){$("#promptLabel").textContent="이 단어의 뜻은?";$("#question").textContent=w.term;$("#answer").placeholder="한국어 뜻 입력"}else{$("#promptLabel").textContent="이 뜻의 영어 단어는?";$("#question").textContent=w.meanings[0]||"";$("#answer").placeholder="영어 단어 입력"}
-  $("#answer").value="";$("#answer").disabled=false;$("#gradeBtn").disabled=false;$("#gradeBtn").textContent="채점하기";$("#resultBox").className="result hidden";$("#nextBtn").classList.add("hidden");$("#acceptBtn").classList.add("hidden");S.lastGrade=null;
+  $("#answer").value="";$("#answer").disabled=false;$("#gradeBtn").disabled=false;$("#gradeBtn").textContent="채점하기";$("#resultBox").className="result hidden";$("#nextBtn").classList.add("hidden");S.lastGrade=null;
 }
 $("#answer").onkeydown=e=>{if(e.key==="Enter"){if($("#nextBtn").classList.contains("hidden"))$("#gradeBtn").click();else $("#nextBtn").click()}};
 $("#gradeBtn").onclick=async()=>{
@@ -350,21 +507,20 @@ $("#gradeBtn").onclick=async()=>{
   try{
     let d;if(S.testMode==="reverse"){const ok=norm(a)===norm(w.term);d={verdict:ok?"correct":"wrong",reason:ok?"철자가 일치해.":`정답은 ${w.term}`,acceptedMeaning:w.term}}
     else{
-      const exact=[...(w.meanings||[]),...(w.acceptedAnswers||[])].some(m=>{const x=norm(m),y=norm(a);return x===y||(x.length>=2&&y.length>=2&&(x.includes(y)||y.includes(x)))});
+      const exact=[...(w.meanings||[])].some(m=>{const x=norm(m),y=norm(a);return x===y||(x.length>=2&&y.length>=2&&(x.includes(y)||y.includes(x)))});
       if(exact)d={verdict:"correct",reason:"등록된 핵심 의미와 직접 일치해.",acceptedMeaning:w.meanings[0]||""};
       else{if(!needApi())throw Error("AI 연결 필요");const prompt=`영어 뜻 테스트를 한국 고등학생 독해 기준으로 채점하라.
 단어:${w.term}
 등록 뜻:${JSON.stringify(w.meanings)}
-허용 답:${JSON.stringify(w.acceptedAnswers||[])}
 문맥:${w.context||"(없음)"}
 학생 답:${a}
 사전 표현과 달라도 실제 독해에서 핵심 의미 파악에 지장이 없으면 correct, 방향은 맞지만 오해 가능하면 almost, 다른 뜻이면 wrong.
 JSON 하나만:{"verdict":"correct"|"almost"|"wrong","reason":"한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;d=parseAIJSON(responseText(await openai({model:taskModel("fast"),reasoning:{effort:"none"},text:{verbosity:"low"},max_output_tokens:350,input:prompt},{timeoutMs:30000,retries:1})))}
     }
-    const v=d.verdict||"wrong",ok=v==="correct";if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");$("#acceptBtn").classList.toggle("hidden",ok||S.testMode==="reverse");
+    const v=d.verdict||"wrong",ok=v==="correct";if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");
   }catch(e){toast(e.message);btn.disabled=false;btn.textContent="채점하기"}
 };
-$("#acceptBtn").onclick=()=>{const w=S.testQueue[S.testIndex],a=S.lastGrade?.answer;if(!a)return;w.acceptedAnswers=[...new Set([...(w.acceptedAnswers||[]),a])];save();$("#acceptBtn").classList.add("hidden");toast("앞으로 이 답도 정답 인정")};$("#nextBtn").onclick=()=>{S.testIndex++;renderTest()};
+$("#nextBtn").onclick=()=>{S.testIndex++;renderTest()};
 
 /* library */
 function renderLibrary(){
@@ -389,7 +545,7 @@ $("#installBtn").onclick=()=>{const ua=navigator.userAgent;let guide;if(/iPhone|
 $("#closeInstallBtn").onclick=()=>$("#installModal").classList.add("hidden");
 $("#nativeInstallBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$("#installModal").classList.add("hidden")};
 
-function migrate(){for(const w of S.words){if(w.testEnabled===undefined)w.testEnabled=true;if(w.goodCount===undefined)w.goodCount=0;if(!Array.isArray(w.acceptedAnswers))w.acceptedAnswers=[];if(!Array.isArray(w.synonyms))w.synonyms=[];if(!Array.isArray(w.antonyms))w.antonyms=[];if(!Array.isArray(w.derivatives))w.derivatives=[]}}
+function migrate(){for(const w of S.words){if(w.testEnabled===undefined)w.testEnabled=true;if(w.goodCount===undefined)w.goodCount=0;if(!Array.isArray(w.synonyms))w.synonyms=[];if(!Array.isArray(w.antonyms))w.antonyms=[];if(!Array.isArray(w.derivatives))w.derivatives=[]}}
 migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
 renderHome();

@@ -15,7 +15,7 @@
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.5 SPEED</small>
+    <small>VOCABWALK AI · v0.5.1 PHOTO FIX</small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -77,7 +77,7 @@
     <input id="sourceLabel" class="input" placeholder="예: 영어 프린트 3과 (선택)">
 
     <label id="dropZone" class="drop-zone">
-      <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <input id="imageInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple>
       <div class="plus">＋</div>
       <strong>여러 장 선택 / 드래그앤드롭</strong>
       <span>한 번에 최대 8장 · 원본 이미지를 AI가 직접 읽어.</span>
@@ -198,7 +198,6 @@
         <input id="answer" class="answer" placeholder="답 입력" autocomplete="off">
         <button id="gradeBtn" class="big dark">채점하기</button>
         <div id="resultBox" class="result hidden"></div>
-        <button id="acceptBtn" class="big hidden">내 답도 정답으로 기억</button>
         <button id="nextBtn" class="big hidden">다음 문제</button>
       </div>
     </div>
