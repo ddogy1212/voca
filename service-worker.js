@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v5-4-edit-result";
+const CACHE="vocabwalk-v5-5-test-skip";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=054",
-  "./app.js?v=054",
+  "./styles.css?v=055",
+  "./app.js?v=055",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

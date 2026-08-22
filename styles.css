@@ -183,3 +183,20 @@ nav{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(760px,
   color:#fff;
   border-color:#171717;
 }
+
+.test-action-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+  margin-top:9px;
+}
+.test-action-row .big{margin-top:0}
+.skip-btn{
+  background:#fff8ee;
+  color:var(--amber);
+  border-color:#f0d9b8;
+}
+.skip-btn:disabled{opacity:.4}
+@media(max-width:420px){
+  .test-action-row{grid-template-columns:1fr}
+}

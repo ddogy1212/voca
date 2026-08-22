@@ -38,7 +38,15 @@ function studyTouch(){
   }else S.meta.streak=1;
   S.meta.lastStudy=today;
 }
-function weakness(w){return Math.max(0,Math.min(100,(w.wrong||0)*20+(6-(w.strength||0))*10+((w.dueAt||0)<=now()?12:0)-(w.correct||0)*2))}
+function weakness(w){
+  return Math.max(0,Math.min(100,
+    (w.wrong||0)*20+
+    (w.skipCount||0)*18+
+    (6-(w.strength||0))*10+
+    ((w.dueAt||0)<=now()?12:0)-
+    (w.correct||0)*2
+  ));
+}
 function renderHome(){
   const due=S.words.filter(w=>(w.dueAt||0)<=now()),weak=S.words.filter(w=>weakness(w)>=45),tries=S.meta.correct+S.meta.wrong;
   $("#dueHero").textContent=`복습 ${due.length}개`;$("#totalStat").textContent=S.words.length;$("#weakStat").textContent=weak.length;$("#accStat").textContent=tries?Math.round(S.meta.correct/tries*100)+"%":"-";$("#streak").textContent=S.meta.streak||0;
@@ -628,7 +636,7 @@ function bindPickEditors(){
 }
 $("#selectAll").onclick=()=>$$("[data-pick]").forEach(x=>x.checked=true);
 function makeWord(x){
-  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,testEnabled:true};
+  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,skipCount:0,testEnabled:true};
 }
 function addWord(x){
   if(!x.term)return false;const old=S.words.find(w=>norm(w.term)===norm(x.term));
@@ -715,12 +723,45 @@ function interval(w,g){if(g==="again"){w.strength=Math.max(0,(w.strength||0)-1);
 function applyMemory(w,g){
   studyTouch();w.seen=(w.seen||0)+1;if(w.goodCount===undefined)w.goodCount=0;if(w.testEnabled===undefined)w.testEnabled=true;
   if(g==="again")w.wrong=(w.wrong||0)+1;
-  if(g==="good"){w.correct=(w.correct||0)+1;w.goodCount++;if(w.goodCount>=2&&w.testEnabled!==false){w.testEnabled=false;toast(`✅ ${w.term}: 앎 2회 → 시험 졸업`)}}
+  if(g==="good"){
+    w.correct=(w.correct||0)+1;
+    w.goodCount++;
+    w.skipCount=Math.max(0,(w.skipCount||0)-1);
+    if(w.goodCount>=2&&w.testEnabled!==false){
+      w.testEnabled=false;
+      toast(`✅ ${w.term}: 앎 2회 → 시험 졸업`);
+    }
+  }
   w.dueAt=now()+interval(w,g);save();
 }
 function startReview(shuf=false){
-  if(!S.words.length){$("#reviewEmpty").classList.remove("hidden");$("#reviewArea").classList.add("hidden");return}
-  $("#reviewEmpty").classList.add("hidden");$("#reviewArea").classList.remove("hidden");const due=S.words.filter(w=>(w.dueAt||0)<=now());let base=due.length?due:[...S.words].sort((a,b)=>weakness(b)-weakness(a));if(shuf)base=shuffle(base);S.reviewQueue=base;S.reviewIndex=0;renderReview();
+  if(!S.words.length){
+    $("#reviewEmpty").classList.remove("hidden");
+    $("#reviewArea").classList.add("hidden");
+    return;
+  }
+
+  $("#reviewEmpty").classList.add("hidden");
+  $("#reviewArea").classList.remove("hidden");
+
+  const due=S.words
+    .filter(w=>(w.dueAt||0)<=now())
+    .sort((a,b)=>weakness(b)-weakness(a));
+
+  let base=due.length?due:[...S.words].sort((a,b)=>weakness(b)-weakness(a));
+
+  // 시험에서 넘긴 단어는 같은 암기 세션 안에서도 1~2회 더 등장.
+  const weighted=[];
+  for(const w of base){
+    weighted.push(w);
+    const extra=Math.min(2,w.skipCount||0);
+    for(let i=0;i<extra;i++)weighted.push(w);
+  }
+
+  // 기본 우선순위는 유지하되 사용자가 '섞기'를 누른 경우에만 전체 셔플.
+  S.reviewQueue=shuf?shuffle(weighted):weighted;
+  S.reviewIndex=0;
+  renderReview();
 }
 $("#shuffleBtn").onclick=()=>startReview(true);
 function renderReview(){
@@ -746,11 +787,23 @@ function renderTest(){
   if(S.testIndex>=S.testQueue.length){toast(`테스트 완료 ${S.testCorrect}/${S.testQueue.length}`);show("home");return}
   const w=S.testQueue[S.testIndex];$("#testNo").textContent=`${S.testIndex+1} / ${S.testQueue.length}`;$("#testScore").textContent=`${S.testCorrect} correct`;
   if(S.testMode==="meaning"){$("#promptLabel").textContent="이 단어의 뜻은?";$("#question").textContent=w.term;$("#answer").placeholder="한국어 뜻 입력"}else{$("#promptLabel").textContent="이 뜻의 영어 단어는?";$("#question").textContent=w.meanings[0]||"";$("#answer").placeholder="영어 단어 입력"}
-  $("#answer").value="";$("#answer").disabled=false;$("#gradeBtn").disabled=false;$("#gradeBtn").textContent="채점하기";$("#resultBox").className="result hidden";$("#nextBtn").classList.add("hidden");S.lastGrade=null;
+  $("#answer").value="";
+  $("#answer").disabled=false;
+  $("#gradeBtn").disabled=false;
+  $("#skipBtn").disabled=false;
+  $("#gradeBtn").textContent="채점하기";
+  $("#resultBox").className="result hidden";
+  $("#nextBtn").classList.add("hidden");
+  S.lastGrade=null;
 }
 $("#answer").onkeydown=e=>{if(e.key==="Enter"){if($("#nextBtn").classList.contains("hidden"))$("#gradeBtn").click();else $("#nextBtn").click()}};
 $("#gradeBtn").onclick=async()=>{
-  const w=S.testQueue[S.testIndex],a=$("#answer").value.trim();if(!a)return toast("답을 먼저 입력해줘.");const btn=$("#gradeBtn");btn.disabled=true;btn.textContent="채점 중…";
+  const w=S.testQueue[S.testIndex],a=$("#answer").value.trim();
+  if(!a)return toast("답을 먼저 입력해줘.");
+  const btn=$("#gradeBtn");
+  btn.disabled=true;
+  $("#skipBtn").disabled=true;
+  btn.textContent="채점 중…";
   try{
     let d;if(S.testMode==="reverse"){const ok=norm(a)===norm(w.term);d={verdict:ok?"correct":"wrong",reason:ok?"철자가 일치해.":`정답은 ${w.term}`,acceptedMeaning:w.term}}
     else{
@@ -765,15 +818,42 @@ $("#gradeBtn").onclick=async()=>{
 JSON 하나만:{"verdict":"correct"|"almost"|"wrong","reason":"한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;d=parseAIJSON(responseText(await openai({model:taskModel("fast"),reasoning:{effort:"none"},text:{verbosity:"low"},max_output_tokens:350,input:prompt},{timeoutMs:30000,retries:1})))}
     }
     const v=d.verdict||"wrong",ok=v==="correct";if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");
-  }catch(e){toast(e.message);btn.disabled=false;btn.textContent="채점하기"}
+  }catch(e){
+    toast(e.message);
+    btn.disabled=false;
+    $("#skipBtn").disabled=false;
+    btn.textContent="채점하기";
+  }
 };
+$("#skipBtn").onclick=()=>{
+  const w=S.testQueue[S.testIndex];
+  if(!w)return;
+
+  w.skipCount=(w.skipCount||0)+1;
+  w.seen=(w.seen||0)+1;
+
+  // 넘기기는 오답률에는 포함하지 않지만,
+  // 기억이 약한 것으로 판단해 복습 우선순위를 강하게 높인다.
+  w.strength=Math.max(0,(w.strength||0)-1);
+  w.stability=Math.max(.25,(w.stability||.5)*.65);
+  w.dueAt=now();
+  w.testEnabled=true;
+
+  studyTouch();
+  save();
+
+  toast(`↪ ${w.term}: 암기에서 더 자주 보여줄게`);
+  S.testIndex++;
+  renderTest();
+};
+
 $("#nextBtn").onclick=()=>{S.testIndex++;renderTest()};
 
 /* library */
 function renderLibrary(){
   const q=norm($("#search").value);let arr=S.words.filter(w=>!q||norm(w.term).includes(q)||norm(w.meanings.join(" ")).includes(q));
   if(S.filter==="star")arr=arr.filter(w=>w.star);if(S.filter==="wrong")arr=arr.filter(w=>(w.wrong||0)>0);if(S.filter==="passage")arr=arr.filter(w=>w.sourceType==="passage");if(S.filter==="test")arr=arr.filter(w=>w.testEnabled!==false);if(S.filter==="graduated")arr=arr.filter(w=>w.testEnabled===false);
-  $("#libraryList").innerHTML=arr.length?arr.map(w=>{const enabled=w.testEnabled!==false;return `<div class="word-row"><div class="word-main"><b>${esc(w.term)} ${w.star?"★":""}<span class="test-badge ${enabled?"":"off"}">${enabled?"시험중":"시험졸업"}</span></b><small>${esc(w.meanings.join(", "))}</small><small>${esc(w.sourceLabel||w.sourceType)} · 앎 ${w.goodCount||0}/2 · 맞음 ${w.correct||0} / 틀림 ${w.wrong||0}</small></div><div class="word-btns"><button class="test-toggle ${enabled?"":"off"}" data-testtoggle="${w.id}">${enabled?"시험 빼기":"시험 넣기"}</button><button data-star="${w.id}">${w.star?"★":"☆"}</button><button data-del="${w.id}">✕</button></div></div>`}).join(""):`<div class="empty-state"><div class="big-ico">📚</div><h3>단어 없음</h3></div>`;
+  $("#libraryList").innerHTML=arr.length?arr.map(w=>{const enabled=w.testEnabled!==false;return `<div class="word-row"><div class="word-main"><b>${esc(w.term)} ${w.star?"★":""}<span class="test-badge ${enabled?"":"off"}">${enabled?"시험중":"시험졸업"}</span></b><small>${esc(w.meanings.join(", "))}</small><small>${esc(w.sourceLabel||w.sourceType)} · 앎 ${w.goodCount||0}/2 · 넘김 ${w.skipCount||0} · 맞음 ${w.correct||0} / 틀림 ${w.wrong||0}</small></div><div class="word-btns"><button class="test-toggle ${enabled?"":"off"}" data-testtoggle="${w.id}">${enabled?"시험 빼기":"시험 넣기"}</button><button data-star="${w.id}">${w.star?"★":"☆"}</button><button data-del="${w.id}">✕</button></div></div>`}).join(""):`<div class="empty-state"><div class="big-ico">📚</div><h3>단어 없음</h3></div>`;
   $$("[data-star]").forEach(b=>b.onclick=()=>{const w=S.words.find(x=>x.id===b.dataset.star);w.star=!w.star;save();renderLibrary()});
   $$("[data-testtoggle]").forEach(b=>b.onclick=()=>{const w=S.words.find(x=>x.id===b.dataset.testtoggle);if(w.testEnabled===false){w.testEnabled=true;w.goodCount=0;toast(`${w.term} → 시험에 다시 추가`)}else{w.testEnabled=false;toast(`${w.term} → 시험에서 제외`)}save();renderLibrary()});
   $$("[data-del]").forEach(b=>b.onclick=()=>{S.words=S.words.filter(x=>x.id!==b.dataset.del);save();renderLibrary()});
@@ -792,12 +872,21 @@ $("#installBtn").onclick=()=>{const ua=navigator.userAgent;let guide;if(/iPhone|
 $("#closeInstallBtn").onclick=()=>$("#installModal").classList.add("hidden");
 $("#nativeInstallBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$("#installModal").classList.add("hidden")};
 
-function migrate(){for(const w of S.words){if(w.testEnabled===undefined)w.testEnabled=true;if(w.goodCount===undefined)w.goodCount=0;if(!Array.isArray(w.synonyms))w.synonyms=[];if(!Array.isArray(w.antonyms))w.antonyms=[];if(!Array.isArray(w.derivatives))w.derivatives=[]}}
+function migrate(){
+  for(const w of S.words){
+    if(w.testEnabled===undefined)w.testEnabled=true;
+    if(w.goodCount===undefined)w.goodCount=0;
+    if(w.skipCount===undefined)w.skipCount=0;
+    if(!Array.isArray(w.synonyms))w.synonyms=[];
+    if(!Array.isArray(w.antonyms))w.antonyms=[];
+    if(!Array.isArray(w.derivatives))w.derivatives=[];
+  }
+}
 migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=054",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=055",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
