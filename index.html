@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=052">
+  <link rel="stylesheet" href="./styles.css?v=054">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.5.2 GALAXY FIX <span class="build-badge">BUILD 052</span></small>
+    <small>VOCABWALK AI · v0.5.4 EDIT RESULT <span class="build-badge">BUILD 054</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -75,6 +75,35 @@
     </div>
 
     <input id="sourceLabel" class="input" placeholder="예: 영어 프린트 3과 (선택)">
+
+    <div class="manual-panel">
+      <div class="section-head no-top">
+        <div>
+          <span class="eyebrow">MANUAL ADD</span>
+          <h3>직접 단어 넣기</h3>
+        </div>
+        <button id="toggleManualBtn" type="button" class="link">열기</button>
+      </div>
+
+      <div id="manualBody" class="hidden">
+        <div class="manual-help">
+          한 줄에 하나씩 입력해. <b>영어 = 한국어 뜻</b> 형식이 제일 편해.
+          <br>예: <code>reinforce = 강화하다</code>
+        </div>
+
+        <textarea id="manualBulk" class="manual-textarea" rows="6" placeholder="reinforce = 강화하다
+undermine = 약화시키다
+compelling = 설득력 있는"></textarea>
+
+        <div class="manual-grid">
+          <input id="manualSource" class="input" placeholder="출처 (선택)">
+          <label class="star-check"><input id="manualStar" type="checkbox"> ★ 전부 즐겨찾기</label>
+        </div>
+
+        <button id="manualAddBtn" type="button" class="big dark">직접 입력한 단어 추가</button>
+        <p class="fine">구분자는 = / : / 탭 / 쉼표를 지원해. 같은 단어가 이미 있으면 새로 중복 생성하지 않고 뜻을 합쳐.</p>
+      </div>
+    </div>
 
     <input id="imageInput" class="real-file-input" type="file" accept="image/*" multiple>
     <div id="dropZone" class="drop-zone">
@@ -262,6 +291,6 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=052"></script>
+<script src="./app.js?v=054"></script>
 </body>
 </html>

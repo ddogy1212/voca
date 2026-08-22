@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v5-2-galaxy-fix";
+const CACHE="vocabwalk-v5-4-edit-result";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=052",
-  "./app.js?v=052",
+  "./styles.css?v=054",
+  "./app.js?v=054",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

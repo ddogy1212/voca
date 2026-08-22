@@ -121,6 +121,111 @@ async function openai(body,{prefix=null,timeoutMs=75000,retries=2}={}){
 
 /* Multiple photo upload + drag/drop */
 $$(".mode").forEach(b=>b.onclick=()=>{$$(".mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.mode=b.dataset.mode});
+
+/* Manual vocabulary entry */
+$("#toggleManualBtn").onclick=()=>{
+  const body=$("#manualBody");
+  const opening=body.classList.contains("hidden");
+  body.classList.toggle("hidden",!opening);
+  $("#toggleManualBtn").textContent=opening?"닫기":"열기";
+  if(opening)setTimeout(()=>$("#manualBulk").focus(),50);
+};
+
+function parseManualLine(line){
+  const raw=String(line||"").trim();
+  if(!raw)return null;
+
+  // Most explicit separators first
+  const separators=["\t"," = ","="," : ",":",","," - "," – "," — "];
+  let left="",right="";
+  for(const sep of separators){
+    const idx=raw.indexOf(sep);
+    if(idx>0){
+      left=raw.slice(0,idx).trim();
+      right=raw.slice(idx+sep.length).trim();
+      break;
+    }
+  }
+
+  // Fallback: first whitespace run separates English from Korean when obvious.
+  if(!left){
+    const m=raw.match(/^([A-Za-z][A-Za-z0-9'’.\-\s]*?)\s{2,}(.+)$/);
+    if(m){left=m[1].trim();right=m[2].trim()}
+  }
+
+  if(!left||!right)return {error:true,raw};
+
+  // Require at least one Latin letter in the term.
+  if(!/[A-Za-z]/.test(left))return {error:true,raw};
+
+  const meanings=right
+    .split(/\s*[\/;]\s*/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  return {
+    term:left,
+    meanings:meanings.length?meanings:[right],
+    partOfSpeech:"",
+    context:"",
+    synonyms:[],
+    antonyms:[],
+    derivatives:[],
+    importance:1,
+    sourceType:"manual",
+    sourceLabel:$("#manualSource").value.trim()||"직접 입력"
+  };
+}
+
+$("#manualAddBtn").onclick=()=>{
+  const text=$("#manualBulk").value.trim();
+  if(!text)return toast("먼저 단어를 입력해줘.");
+
+  const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const parsed=[],bad=[];
+
+  for(const line of lines){
+    const x=parseManualLine(line);
+    if(!x)continue;
+    if(x.error)bad.push(line);
+    else parsed.push(x);
+  }
+
+  if(!parsed.length){
+    toast("형식을 읽지 못했어. 예: reinforce = 강화하다");
+    return;
+  }
+
+  let added=0,merged=0;
+  const starAll=$("#manualStar").checked;
+
+  for(const x of parsed){
+    const existing=S.words.find(w=>norm(w.term)===norm(x.term));
+    if(existing){
+      existing.meanings=[...new Set([...(existing.meanings||[]),...(x.meanings||[])])];
+      if(starAll)existing.star=true;
+      merged++;
+    }else{
+      const w=makeWord(x);
+      if(starAll)w.star=true;
+      S.words.push(w);
+      added++;
+    }
+  }
+
+  save();
+  $("#manualBulk").value="";
+  $("#manualStar").checked=false;
+
+  if(bad.length){
+    toast(`${added}개 추가 · ${merged}개 병합 · ${bad.length}줄 형식 확인 필요`);
+  }else{
+    toast(`${added}개 추가 · ${merged}개 기존 단어와 병합 ✅`);
+  }
+
+  renderHome();
+};
+
 const imageInput=$("#imageInput");
 const dz=$("#dropZone");
 const choosePhotosBtn=$("#choosePhotosBtn");
@@ -435,7 +540,7 @@ $("#analyzeBtn").onclick=async()=>{
     setProgress("analysis",93,"결과 정리 중","철자와 뜻의 중복·오인식 표시를 정리하고 있어.");
     const usedSearch=(result.output||[]).some(x=>x.type==="web_search_call");
     if(!usedSearch)throw Error("검색 검증이 실행되지 않았어. 다시 시도해줘.");
-    S.extracted=parseAIJSON(responseText(result));S.extracted.webVerified=true;renderExtract();
+    S.extracted=parseAIJSON(responseText(result));S.extracted.webVerified=true;renderExtract();bindPickEditors();
     setProgress("analysis",100,"완료","AI 인식 + 웹 검색 검증이 끝났어.");
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
@@ -445,13 +550,81 @@ $("#analyzeBtn").onclick=async()=>{
   }finally{btn.disabled=false}
 };
 function relText(x){return [x.synonyms?.length?"동의: "+x.synonyms.join(", "):"",x.antonyms?.length?"반의: "+x.antonyms.join(", "):"",x.derivatives?.length?"파생: "+x.derivatives.join(", "):""].filter(Boolean).join(" · ")}
-function pick(x,key,checked){return `<label class="pick"><input type="checkbox" data-pick="${key}" ${checked?"checked":""}><span><b>${esc(x.term||"")}</b><small>${esc((x.meanings||[]).join(", "))}</small>${x.context?`<small>${esc(x.context)}</small>`:""}${relText(x)?`<small>${esc(relText(x))}</small>`:""}</span></label>`}
+function pick(x,key,checked){
+  return `<div class="pick" data-pickrow="${key}">
+    <input type="checkbox" data-pick="${key}" ${checked?"checked":""}>
+    <span class="pick-content">
+      <b>${esc(x.term||"")}</b>
+      <small>${esc((x.meanings||[]).join(", "))}</small>
+      ${x.context?`<small>${esc(x.context)}</small>`:""}
+      ${relText(x)?`<small>${esc(relText(x))}</small>`:""}
+      <div class="pick-editor hidden" data-editor="${key}">
+        <input class="input" data-edit-term="${key}" value="${esc(x.term||"")}" placeholder="영어 단어/표현">
+        <input class="input" data-edit-meaning="${key}" value="${esc((x.meanings||[]).join(" / "))}" placeholder="한국어 뜻">
+        <div class="pick-editor-actions">
+          <button type="button" class="save" data-save-edit="${key}">저장</button>
+          <button type="button" data-cancel-edit="${key}">취소</button>
+        </div>
+      </div>
+    </span>
+    <button type="button" class="pick-edit-btn" data-edit-pick="${key}">수정</button>
+  </div>`;
+}
 function renderExtract(){
   const d=S.extracted||{};$("#extractTitle").textContent=d.title||"검증 결과";$("#summary").textContent=d.summary||"";$("#summary").classList.toggle("hidden",!d.summary);$("#verifyBadge").classList.toggle("hidden",!d.webVerified);
   $("#extractWarnings").innerHTML=(d.warnings||[]).map(x=>"⚠ "+esc(x)).join("<br>");$("#extractWarnings").classList.toggle("hidden",!(d.warnings||[]).length);
   $("#correctionsBox").innerHTML=(d.corrections||[]).map(x=>`수정: <b>${esc(x.before||"")}</b> → <b>${esc(x.after||"")}</b> · ${esc(x.reason||"")}`).join("<br>");$("#correctionsBox").classList.toggle("hidden",!(d.corrections||[]).length);
   $("#mainItems").innerHTML=(d.items||[]).map((x,i)=>pick(x,"m"+i,true)).join("")||`<div class="fine">확실하게 검증된 단어가 없어.</div>`;
   $("#extraItems").innerHTML=(d.extraItems||[]).map((x,i)=>pick(x,"e"+i,false)).join("");$("#extraBlock").classList.toggle("hidden",!(d.extraItems||[]).length);
+}
+function getExtractItemByKey(key){
+  const type=String(key||"").charAt(0);
+  const index=Number(String(key||"").slice(1));
+  if(!Number.isInteger(index)||index<0)return null;
+  if(type==="m")return S.extracted?.items?.[index]||null;
+  if(type==="e")return S.extracted?.extraItems?.[index]||null;
+  return null;
+}
+function refreshPickRow(key){
+  const row=$(`[data-pickrow="${key}"]`);
+  if(!row)return;
+  const item=getExtractItemByKey(key);
+  if(!item)return;
+  const checked=$(`[data-pick="${key}"]`)?.checked??true;
+  const wrap=document.createElement("div");
+  wrap.innerHTML=pick(item,key,checked);
+  row.replaceWith(wrap.firstElementChild);
+  bindPickEditors();
+}
+function bindPickEditors(){
+  $$("[data-edit-pick]").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.dataset.editPick;
+      $(`[data-editor="${key}"]`)?.classList.toggle("hidden");
+    };
+  });
+  $$("[data-cancel-edit]").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.dataset.cancelEdit;
+      $(`[data-editor="${key}"]`)?.classList.add("hidden");
+    };
+  });
+  $$("[data-save-edit]").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.dataset.saveEdit;
+      const item=getExtractItemByKey(key);
+      if(!item)return;
+      const term=$(`[data-edit-term="${key}"]`)?.value.trim()||"";
+      const meaningText=$(`[data-edit-meaning="${key}"]`)?.value.trim()||"";
+      if(!term)return toast("영어 단어를 입력해줘.");
+      if(!meaningText)return toast("한국어 뜻을 입력해줘.");
+      const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
+      item.term=term;
+      item.meanings=meanings.length?meanings:[meaningText];
+      refreshPickRow(key);
+      toast("수정 완료 ✏️");
+    };
+  });
 }
 $("#selectAll").onclick=()=>$$("[data-pick]").forEach(x=>x.checked=true);
 function makeWord(x){
@@ -624,7 +797,7 @@ migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classLi
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=052",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=054",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
