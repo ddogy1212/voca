@@ -27,3 +27,10 @@ main{max-width:760px;margin:auto;padding:8px 12px}.view{display:none}.view.activ
 nav{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(760px,100%);background:#ffffffef;backdrop-filter:blur(14px);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:8px 7px calc(8px + env(safe-area-inset-bottom));z-index:50}.nav{border:0;background:transparent;color:#99938a;font-size:20px}.nav span{display:block;font-size:9px}.nav.active{color:#171717;font-weight:850}
 .toast{position:fixed;left:50%;bottom:88px;transform:translate(-50%,16px);background:#171717;color:#fff;border-radius:12px;padding:11px 15px;opacity:0;pointer-events:none;transition:.2s;z-index:110;max-width:90%;text-align:center;font-size:13px}.toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:480px){.top h1{font-size:19px}.top-actions .pill{padding:7px 9px;font-size:11px}.hero{padding:20px}.hero h2{font-size:26px}.circle{width:78px;height:78px}.action{min-height:122px;padding:14px}.flash h2{font-size:41px}.flash{min-height:58vh}.photo-list{grid-template-columns:repeat(2,1fr)}}
+
+.progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.progress-head strong{font-size:16px;font-variant-numeric:tabular-nums}
+.api-progress{height:8px;background:#ffffff25;border-radius:999px;overflow:hidden;margin:4px 0 7px}
+.api-progress span{display:block;height:100%;width:0%;background:#fff;border-radius:999px;transition:width .35s ease}
+.analysis-status small{display:block;color:#cfcfcf;line-height:1.45}
+.speed-note{font-size:10px;color:var(--muted)}

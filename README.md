@@ -1,4 +1,4 @@
-# VocabWalk AI v0.4 — GitHub Pages / PWA
+# VocabWalk AI v0.5 SPEED — GitHub Pages / PWA
 
 ## 가장 간단한 배포
 
@@ -25,7 +25,7 @@ GitHub Pages는 정적 사이트이므로 OpenAI API 키를 저장소 코드에 
 
 공개 서비스로 다른 사용자에게 배포할 단계가 오면 OpenAI 키는 Cloudflare Worker / 서버 / 서버리스 함수 등 서버측 비밀 환경변수로 옮겨야 합니다.
 
-## v0.4 기능
+## v0.5 SPEED 기능
 
 - 한 번에 이미지 최대 8장 선택
 - 데스크톱 드래그앤드롭
@@ -68,3 +68,27 @@ GitHub Pages는 정적 사이트이므로 OpenAI API 키를 저장소 코드에 
 - `.github/workflows/pages.yml`
 
 별도 npm / Node.js / 빌드 과정은 없습니다.
+
+
+## v0.5 SPEED 변경점
+
+- 사진 분석 2회 API 호출 → **이미지 인식 + 웹 검색 검증을 1회 Responses 요청으로 통합**
+- `gpt-5.6`(Sol) 대신 사진 작업은 `gpt-5.6-terra`, 추천/채점은 `gpt-5.6-luna` 우선
+- 큰 사진은 전송 지연을 줄이기 위해 최대 2,048px / 약 2.5MP 수준을 목표로 선명하게 최적화
+  - OCR을 사이트에서 하는 것이 아니라, 전송 크기만 줄인 뒤 AI가 이미지를 직접 읽습니다.
+- 429 / 5xx / 네트워크 오류에 자동 재시도 + 지수 백오프
+- 요청 시간 제한 추가
+- 사진 분석과 오늘의 단어에 **예상 진행률 0~100% 표시**
+- 오늘의 단어는 웹 검색 1회로 최대 15개를 미리 받아 캐시하고, 사용자에게 5개씩 보여줌
+  - 첫 호출 뒤 `5개 더`는 캐시가 남아 있으면 즉시 표시
+- Service Worker 캐시를 v5로 갱신하고 즉시 활성화
+
+### 이미 v0.4를 GitHub Pages에 올린 경우
+새 ZIP의 파일들을 기존 저장소에 덮어쓰면 됩니다.
+특히 아래 4개는 반드시 교체:
+- `index.html`
+- `app.js`
+- `styles.css`
+- `service-worker.js`
+
+GitHub Actions 배포 완료 후 설치된 앱을 완전히 닫았다가 다시 열어주세요.

@@ -15,7 +15,7 @@
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.4</small>
+    <small>VOCABWALK AI · v0.5 SPEED</small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -85,8 +85,12 @@
 
     <div id="photoList" class="photo-list hidden"></div>
 
-    <button id="analyzeBtn" class="big dark" disabled>AI 인식 + 웹 검색 검증</button>
-    <div id="analysisStatus" class="analysis-status hidden"></div>
+    <button id="analyzeBtn" class="big dark" disabled>빠른 AI 인식 + 검색 검증</button>
+    <div id="analysisStatus" class="analysis-status hidden">
+      <div class="progress-head"><b id="analysisLabel">준비 중</b><strong id="analysisPct">0%</strong></div>
+      <div class="api-progress"><span id="analysisBar"></span></div>
+      <small id="analysisDetail">사진을 준비하고 있어.</small>
+    </div>
     <p class="fine">사이트 내부 OCR은 사용하지 않아. ① 원본 사진을 AI 이미지 입력으로 인식하고 ② 추출된 철자·뜻을 웹 검색으로 한 번 더 검증한 뒤 결과를 보여줘.</p>
 
     <div id="extractPanel" class="panel hidden">
@@ -119,7 +123,11 @@
       <p>이미 아는 단어는 피하고, 현재 외우는 단어와 연결되는 어휘와 시험 독해에 활용도가 높은 어휘를 웹 검색으로 확인해서 가져와.</p>
     </div>
     <button id="loadTodayBtn" class="big dark">오늘의 단어 5개 받기</button>
-    <div id="todayStatus" class="analysis-status hidden"></div>
+    <div id="todayStatus" class="analysis-status hidden">
+      <div class="progress-head"><b id="todayLabel">준비 중</b><strong id="todayPct">0%</strong></div>
+      <div class="api-progress"><span id="todayBar"></span></div>
+      <small id="todayDetail">단어장을 비교하고 있어.</small>
+    </div>
     <div id="todayList" class="today-list"></div>
     <button id="moreTodayBtn" class="big hidden">＋ 5개 더 계속 알려줘</button>
   </section>
@@ -230,10 +238,10 @@
   <div class="modal">
     <span class="eyebrow">AI SETUP · PERSONAL TEST</span>
     <h2>API 자동 연결</h2>
-    <p>처음 한 번만 키를 입력하면 이 브라우저에 저장되고 다음 실행부터 자동 연결돼. GitHub Pages는 정적 호스팅이라 API 키를 코드에 박아 넣지는 않아.</p>
+    <p>처음 한 번만 키를 입력하면 이 브라우저에 저장되고 다음 실행부터 자동 연결돼. v0.5는 사진은 Terra, 빠른 추천·채점은 Luna를 우선 사용해서 지연을 줄여.</p>
     <div class="warn">⚠ 공개/공용 기기에서는 저장하지 마. 정식 서비스 단계에서는 서버 프록시로 키를 숨기는 게 맞아.</div>
     <input id="apiKeyInput" class="input" type="password" placeholder="OpenAI API key">
-    <input id="modelInput" class="input top-gap" value="gpt-5.6" placeholder="모델명">
+    <input id="modelInput" class="input top-gap" value="gpt-5.6-terra" placeholder="기본 모델명">
     <div class="two">
       <button id="saveApiBtn" class="big dark">저장 · 자동연결</button>
       <button id="forgetApiBtn" class="big">저장 키 삭제</button>

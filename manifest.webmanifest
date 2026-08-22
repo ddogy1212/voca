@@ -1,7 +1,7 @@
 {
   "name": "VocabWalk AI",
   "short_name": "VocabWalk",
-  "description": "AI 기반 영어 단어 암기와 수능 독해 어휘 학습",
+  "description": "VocabWalk AI v0.5 SPEED - 빠른 사진 어휘 인식과 수능 영어 학습",
   "id": "./",
   "start_url": "./",
   "scope": "./",
