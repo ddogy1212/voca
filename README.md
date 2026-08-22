@@ -105,3 +105,24 @@ GitHub Actions 배포 완료 후 설치된 앱을 완전히 닫았다가 다시 
 - HEIC/HEIF를 브라우저가 못 읽는 경우 명확한 안내
 - `내 답도 정답으로 기억` 버튼과 기능 삭제
 - 기존 단어장/즐겨찾기/시험 졸업 데이터 키는 유지
+
+
+## v0.5.2 GALAXY PHOTO FIX
+
+사진 선택 경로를 다시 작성했습니다.
+
+- 숨겨진 file input을 label로 여는 방식 제거
+- 실제 `📷 사진 고르기` 버튼에서 `input.click()` 실행
+- 사진 선택 이벤트를 화면에 즉시 표시:
+  - `N장 선택 감지됨`
+  - `N장 앱에 들어옴 ✅`
+- 미리보기는 FileReader를 우선 사용
+- 같은 사진을 다시 골라도 change 이벤트가 발생하도록 input 초기화
+- JS/CSS에 `?v=052` 캐시 버스터 추가
+- Service Worker 등록에도 `?v=052` + `updateViaCache:"none"` 적용
+- HTML/JS/CSS는 network-first + no-store로 갱신
+- 상단에 `BUILD 052`가 보여야 최신 버전입니다.
+
+### 업데이트 확인법
+앱 상단에 `BUILD 052`가 보이면 최신 코드입니다.
+보이지 않으면 GitHub Pages가 아직 새 파일을 배포하지 않았거나 설치 앱이 이전 페이지를 보고 있는 것입니다.

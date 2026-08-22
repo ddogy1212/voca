@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=052">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.5.1 PHOTO FIX</small>
+    <small>VOCABWALK AI · v0.5.2 GALAXY FIX <span class="build-badge">BUILD 052</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -76,13 +76,15 @@
 
     <input id="sourceLabel" class="input" placeholder="예: 영어 프린트 3과 (선택)">
 
-    <label id="dropZone" class="drop-zone">
-      <input id="imageInput" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple>
+    <input id="imageInput" class="real-file-input" type="file" accept="image/*" multiple>
+    <div id="dropZone" class="drop-zone">
       <div class="plus">＋</div>
       <strong>여러 장 선택 / 드래그앤드롭</strong>
-      <span>한 번에 최대 8장 · 원본 이미지를 AI가 직접 읽어.</span>
-    </label>
+      <span>한 번에 최대 8장 · 갤럭시 사진 선택기를 직접 열어.</span>
+      <button id="choosePhotosBtn" type="button" class="choose-photo-btn">📷 사진 고르기</button>
+    </div>
 
+    <div id="photoSelectStatus" class="photo-select-status">아직 선택된 사진이 없어.</div>
     <div id="photoList" class="photo-list hidden"></div>
 
     <button id="analyzeBtn" class="big dark" disabled>빠른 AI 인식 + 검색 검증</button>
@@ -260,6 +262,6 @@
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js"></script>
+<script src="./app.js?v=052"></script>
 </body>
 </html>

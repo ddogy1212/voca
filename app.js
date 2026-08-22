@@ -121,34 +121,97 @@ async function openai(body,{prefix=null,timeoutMs=75000,retries=2}={}){
 
 /* Multiple photo upload + drag/drop */
 $$(".mode").forEach(b=>b.onclick=()=>{$$(".mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.mode=b.dataset.mode});
-$("#imageInput").onchange=e=>addFiles([...e.target.files]);
+const imageInput=$("#imageInput");
 const dz=$("#dropZone");
-["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("dragging")}));
-["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("dragging")}));
-dz.addEventListener("drop",e=>addFiles([...e.dataTransfer.files]));
+const choosePhotosBtn=$("#choosePhotosBtn");
+
+function setPhotoStatus(text,state=""){
+  const el=$("#photoSelectStatus");
+  if(!el)return;
+  el.textContent=text;
+  el.className="photo-select-status"+(state?` ${state}`:"");
+}
+
+// 갤럭시/Android PWA에서 label-hidden-input 조합 대신
+// 사용자가 누른 실제 버튼 이벤트에서 file input을 직접 연다.
+choosePhotosBtn.addEventListener("click",e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  setPhotoStatus("사진 선택기를 여는 중…");
+  imageInput.click();
+});
+
+imageInput.addEventListener("click",()=>{
+  // 같은 사진을 다시 골라도 change가 확실히 발생하게 초기화
+  imageInput.value="";
+});
+
+imageInput.addEventListener("change",async e=>{
+  try{
+    const files=Array.from(e.target.files||[]);
+    setPhotoStatus(files.length?`${files.length}장 선택 감지됨 · 앱에 넣는 중…`:"선택된 사진이 없어.");
+    await addFiles(files);
+  }catch(err){
+    console.error("photo change error",err);
+    setPhotoStatus("사진 선택 처리 중 오류: "+(err?.message||err),"error");
+    toast("사진 선택 처리 오류");
+  }
+});
+
+["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{
+  e.preventDefault();
+  dz.classList.add("dragging");
+}));
+["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{
+  e.preventDefault();
+  dz.classList.remove("dragging");
+}));
+dz.addEventListener("drop",async e=>{
+  try{
+    const files=Array.from(e.dataTransfer?.files||[]);
+    setPhotoStatus(files.length?`${files.length}장 드롭 감지됨 · 앱에 넣는 중…`:"드롭된 사진이 없어.");
+    await addFiles(files);
+  }catch(err){
+    console.error("photo drop error",err);
+    setPhotoStatus("드래그앤드롭 처리 오류: "+(err?.message||err),"error");
+  }
+});
+
 function likelyImageFile(f){
   const type=String(f?.type||"").toLowerCase();
   const name=String(f?.name||"").toLowerCase();
   return type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(name);
 }
+async function makePreviewData(file){
+  try{
+    return await fileToData(file);
+  }catch{
+    try{return URL.createObjectURL(file)}catch{return ""}
+  }
+}
+
 async function addFiles(files){
   const room=8-S.photos.length;
-  if(room<=0)return toast("한 번에 최대 8장이야.");
+  if(room<=0){
+    setPhotoStatus("이미 8장이 들어가 있어. 일부를 지우고 다시 추가해줘.","error");
+    return toast("한 번에 최대 8장이야.");
+  }
 
   const accepted=files.filter(likelyImageFile).slice(0,room);
-  if(!accepted.length)return toast("사진 파일을 찾지 못했어.");
+  if(!accepted.length){
+    setPhotoStatus("선택은 감지됐는데 이미지 파일을 찾지 못했어.","error");
+    return toast("사진 파일을 찾지 못했어.");
+  }
 
-  let added=0;
+  let added=0, skipped=0;
   for(const f of accepted){
     if((f.size||0)>25*1024*1024){
-      toast(`${f.name}: 25MB 초과라 제외`);
+      skipped++;
       continue;
     }
 
-    // 핵심 수정:
-    // 사진을 고른 즉시 목록에 넣는다.
-    // 무거운 리사이즈/변환은 'AI 인식'을 눌렀을 때만 한다.
-    const preview=URL.createObjectURL(f);
+    // 미리보기부터 생성해서 즉시 화면에 보이게 한다.
+    const preview=await makePreviewData(f);
     S.photos.push({
       id:uid(),
       name:f.name||`사진 ${S.photos.length+1}`,
@@ -160,33 +223,44 @@ async function addFiles(files){
       preparedBytes:0
     });
     added++;
+    renderPhotos();
+    setPhotoStatus(`${S.photos.length}장 앱에 들어옴 ✅`,"ok");
   }
 
-  renderPhotos();
-  $("#imageInput").value="";
-  if(added)toast(`${added}장 추가됨 📸`);
-}
+  imageInput.value="";
+  if(!added){
+    setPhotoStatus("사진을 넣지 못했어. 파일 용량이나 형식을 확인해줘.","error");
+    return toast("추가된 사진이 없어.");
+  }
 
+  if(skipped)toast(`${added}장 추가 · 큰 사진 ${skipped}장 제외`);
+  else toast(`${added}장 추가됨 📸`);
+}
 function renderPhotos(){
   const box=$("#photoList");
   box.classList.toggle("hidden",!S.photos.length);
   box.innerHTML=S.photos.map((p,i)=>`
     <div class="photo-item">
       <img src="${p.preview||p.data||""}" alt="선택 사진 ${i+1}">
-      <button data-remove="${p.id}" aria-label="사진 삭제">×</button>
+      <button type="button" data-remove="${p.id}" aria-label="사진 삭제">×</button>
       <span>${i+1}. ${esc(p.name)}</span>
     </div>
   `).join("");
 
   $$("[data-remove]").forEach(b=>b.onclick=e=>{
     e.preventDefault();
+    e.stopPropagation();
     const found=S.photos.find(p=>p.id===b.dataset.remove);
-    if(found?.preview)URL.revokeObjectURL(found.preview);
+    if(found?.preview && String(found.preview).startsWith("blob:")){
+      try{URL.revokeObjectURL(found.preview)}catch{}
+    }
     S.photos=S.photos.filter(p=>p.id!==b.dataset.remove);
     renderPhotos();
   });
 
   $("#analyzeBtn").disabled=!S.photos.length;
+  if(S.photos.length)setPhotoStatus(`${S.photos.length}장 앱에 들어옴 ✅`,"ok");
+  else setPhotoStatus("아직 선택된 사진이 없어.");
 }
 
 function fileToData(f){
@@ -392,7 +466,7 @@ $("#savePicked").onclick=()=>{
   const d=S.extracted||{};if(!d.webVerified)return toast("웹 검색 검증이 끝난 결과만 저장할 수 있어.");
   const arr=[];(d.items||[]).forEach((x,i)=>{$(`[data-pick="m${i}"]`)?.checked&&arr.push(x)});(d.extraItems||[]).forEach((x,i)=>{$(`[data-pick="e${i}"]`)?.checked&&arr.push(x)});
   let n=0;arr.forEach(x=>{if(addWord(x))n++});
-  S.photos.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview)});
+  S.photos.forEach(p=>{if(p.preview&&String(p.preview).startsWith("blob:")){try{URL.revokeObjectURL(p.preview)}catch{}}});
   save();toast(`${n}개 새로 저장`);S.photos=[];renderPhotos();show("home");
 };
 
@@ -547,5 +621,12 @@ $("#nativeInstallBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPromp
 
 function migrate(){for(const w of S.words){if(w.testEnabled===undefined)w.testEnabled=true;if(w.goodCount===undefined)w.goodCount=0;if(!Array.isArray(w.synonyms))w.synonyms=[];if(!Array.isArray(w.antonyms))w.antonyms=[];if(!Array.isArray(w.derivatives))w.derivatives=[]}}
 migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
-if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
+if("serviceWorker"in navigator){
+  window.addEventListener("load",async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=052",{updateViaCache:"none"});
+      await reg.update();
+    }catch(e){console.warn("SW update failed",e)}
+  });
+}
 renderHome();
