@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#171717">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VocabWalk">
+  <title>VocabWalk AI</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <small>VOCABWALK AI · v0.4</small>
+    <h1>단어를 걷는 동안 외우자.</h1>
+  </div>
+  <div class="top-actions">
+    <button id="installBtn" class="pill">📲 설치</button>
+    <button id="apiBtn" class="pill"><span id="apiDot" class="status-dot"></span>AI</button>
+  </div>
+</header>
+
+<main>
+  <section id="home" class="view active">
+    <div class="hero">
+      <div>
+        <span class="eyebrow hero-eye">TODAY</span>
+        <h2 id="dueHero">복습 0개</h2>
+        <p id="heroSub">사진 한 장에서 시작해.</p>
+      </div>
+      <div class="circle"><b id="streak">0</b><span>DAY STREAK</span></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="totalStat">0</b><span>전체 단어</span></div>
+      <div class="stat"><b id="weakStat">0</b><span>취약 단어</span></div>
+      <div class="stat"><b id="accStat">-</b><span>테스트 정답률</span></div>
+    </div>
+
+    <div class="section-head"><h3>바로 학습</h3></div>
+    <div class="action-grid">
+      <button class="action primary" data-go="review">
+        <span class="ico">🚶</span><b>걷기 암기</b><small>큰 글씨 · 발음 · 스와이프</small>
+      </button>
+      <button class="action" data-go="test">
+        <span class="ico">⚡</span><b>AI 랜덤 테스트</b><small>표현이 달라도 의미로 채점</small>
+      </button>
+      <button class="action today-action" data-go="today">
+        <span class="ico">🌎</span><b>오늘의 단어</b><small>수능·모의고사 + 내 학습 단어 기반</small>
+      </button>
+      <button class="action" data-go="library">
+        <span class="ico">📚</span><b>단어 보관함</b><small>오답 · 중요 · 시험목록 관리</small>
+      </button>
+    </div>
+
+    <div class="panel">
+      <div class="section-head no-top">
+        <h3>먼저 볼 단어</h3>
+        <button id="sampleBtn" class="link">샘플 넣기</button>
+      </div>
+      <div id="dueList" class="mini-list empty">아직 단어가 없어.</div>
+    </div>
+  </section>
+
+  <section id="add" class="view">
+    <div class="view-head"><button class="back">←</button><div><small>IMPORT</small><h2>사진 → 단어장</h2></div></div>
+
+    <div class="seg">
+      <button class="mode active" data-mode="wordlist">📖 단어장 사진</button>
+      <button class="mode" data-mode="passage">🧾 영어 지문</button>
+    </div>
+
+    <input id="sourceLabel" class="input" placeholder="예: 영어 프린트 3과 (선택)">
+
+    <label id="dropZone" class="drop-zone">
+      <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <div class="plus">＋</div>
+      <strong>여러 장 선택 / 드래그앤드롭</strong>
+      <span>한 번에 최대 8장 · 원본 이미지를 AI가 직접 읽어.</span>
+    </label>
+
+    <div id="photoList" class="photo-list hidden"></div>
+
+    <button id="analyzeBtn" class="big dark" disabled>AI 인식 + 웹 검색 검증</button>
+    <div id="analysisStatus" class="analysis-status hidden"></div>
+    <p class="fine">사이트 내부 OCR은 사용하지 않아. ① 원본 사진을 AI 이미지 입력으로 인식하고 ② 추출된 철자·뜻을 웹 검색으로 한 번 더 검증한 뒤 결과를 보여줘.</p>
+
+    <div id="extractPanel" class="panel hidden">
+      <div class="section-head no-top">
+        <div><span class="eyebrow">VERIFIED RESULT</span><h3 id="extractTitle">추출 결과</h3></div>
+        <button id="selectAll" class="link">전체 선택</button>
+      </div>
+      <p id="summary" class="summary hidden"></p>
+      <div id="verifyBadge" class="verified-badge hidden">✓ 웹 검색 검증 완료</div>
+      <div id="extractWarnings" class="warn hidden"></div>
+      <div id="correctionsBox" class="corrections hidden"></div>
+      <div id="mainItems" class="pick-list"></div>
+
+      <div id="extraBlock" class="hidden">
+        <div class="section-head"><h3>✨ 같이 외울 추가 단어</h3></div>
+        <div id="extraItems" class="pick-list"></div>
+      </div>
+
+      <button id="savePicked" class="big dark">선택한 단어 저장</button>
+    </div>
+  </section>
+
+  <section id="today" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>DAILY DISCOVERY</small><h2>오늘의 단어</h2></div>
+    </div>
+    <div class="today-intro">
+      <b>내 단어장 + 수능·모의고사 독해</b>
+      <p>이미 아는 단어는 피하고, 현재 외우는 단어와 연결되는 어휘와 시험 독해에 활용도가 높은 어휘를 웹 검색으로 확인해서 가져와.</p>
+    </div>
+    <button id="loadTodayBtn" class="big dark">오늘의 단어 5개 받기</button>
+    <div id="todayStatus" class="analysis-status hidden"></div>
+    <div id="todayList" class="today-list"></div>
+    <button id="moreTodayBtn" class="big hidden">＋ 5개 더 계속 알려줘</button>
+  </section>
+
+  <section id="review" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>WALK MODE</small><h2>걷기 암기</h2></div>
+      <button id="shuffleBtn" class="pill">섞기</button>
+    </div>
+
+    <div id="reviewEmpty" class="empty-state hidden"><div class="big-ico">📭</div><h3>외울 단어가 없어</h3><p>하단 ＋에서 사진을 추가해줘.</p></div>
+
+    <div id="reviewArea">
+      <div class="progress"><span id="reviewProgress"></span></div>
+      <div id="flash" class="flash">
+        <span id="reviewTag" class="tag">WORD</span>
+        <h2 id="reviewTerm">example</h2>
+        <p id="reviewPOS"></p>
+        <div id="reviewBack" class="hidden">
+          <h3 id="reviewMeaning"></h3>
+          <p id="reviewContext"></p>
+          <div id="relations" class="relations"></div>
+        </div>
+        <small id="tapHint" class="fine">탭해서 뜻 보기</small>
+      </div>
+
+      <div id="memoryBtns" class="grade3 hidden">
+        <button data-memory="again">모름<span>5분 후</span></button>
+        <button data-memory="hard">애매<span>짧게 반복</span></button>
+        <button data-memory="good" class="good">앎<span>2회면 시험 졸업</span></button>
+      </div>
+
+      <div class="two">
+        <button id="speakBtn" class="big">🔊 발음</button>
+        <button id="starBtn" class="big">☆ 중요</button>
+      </div>
+      <p class="fine center">좌/우 스와이프: 이전/다음 · 위로 밀기: ‘앎’</p>
+    </div>
+  </section>
+
+  <section id="test" class="view">
+    <div class="view-head">
+      <button class="back">←</button>
+      <div><small>AI TEST</small><h2>랜덤 테스트</h2></div>
+      <button id="restartTest" class="pill">새로</button>
+    </div>
+
+    <div class="seg">
+      <button class="test-mode active" data-test="meaning">영 → 한</button>
+      <button class="test-mode" data-test="reverse">한 → 영</button>
+    </div>
+    <div class="seg">
+      <button class="test-scope active" data-scope="all">전체 시험목록</button>
+      <button class="test-scope" data-scope="star">★ 즐겨찾기만</button>
+    </div>
+    <p class="fine">걷기 암기에서 ‘앎’ 2회가 된 단어는 자동으로 시험에서 빠져. 보관함에서 언제든 다시 넣을 수 있어.</p>
+
+    <div id="testEmpty" class="empty-state hidden">
+      <div class="big-ico">🧪</div><h3 id="testEmptyTitle">테스트할 단어가 없어</h3><p id="testEmptyText">보관함에서 시험목록에 넣을 수 있어.</p>
+    </div>
+
+    <div id="testArea">
+      <div class="test-meta"><span id="testNo">1 / 10</span><span id="testScore">0 correct</span></div>
+      <div class="test-card">
+        <span id="promptLabel" class="fine">이 단어의 뜻은?</span>
+        <h2 id="question"></h2>
+        <input id="answer" class="answer" placeholder="답 입력" autocomplete="off">
+        <button id="gradeBtn" class="big dark">채점하기</button>
+        <div id="resultBox" class="result hidden"></div>
+        <button id="acceptBtn" class="big hidden">내 답도 정답으로 기억</button>
+        <button id="nextBtn" class="big hidden">다음 문제</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="library" class="view">
+    <div class="view-head"><button class="back">←</button><div><small>LIBRARY</small><h2>단어 보관함</h2></div></div>
+    <input id="search" class="input" placeholder="영어 / 한국어 검색">
+    <div class="filters">
+      <button class="filter active" data-filter="all">전체</button>
+      <button class="filter" data-filter="star">★ 중요</button>
+      <button class="filter" data-filter="wrong">오답</button>
+      <button class="filter" data-filter="passage">지문</button>
+      <button class="filter" data-filter="test">시험목록</button>
+      <button class="filter" data-filter="graduated">시험졸업</button>
+    </div>
+    <div id="libraryList" class="library"></div>
+
+    <div class="panel">
+      <div class="two">
+        <button id="exportBtn" class="big no-margin">백업 저장</button>
+        <label class="big file-btn no-margin">백업 불러오기<input id="importFile" type="file" accept="application/json"></label>
+      </div>
+    </div>
+    <button id="clearBtn" class="danger">전체 단어 삭제</button>
+  </section>
+</main>
+
+<nav>
+  <button class="nav active" data-go="home">⌂<span>홈</span></button>
+  <button class="nav" data-go="review">◫<span>암기</span></button>
+  <button class="nav" data-go="test">✦<span>테스트</span></button>
+  <button class="nav" data-go="add">＋<span>추가</span></button>
+</nav>
+
+<div id="apiModal" class="modal-wrap hidden">
+  <div class="modal">
+    <span class="eyebrow">AI SETUP · PERSONAL TEST</span>
+    <h2>API 자동 연결</h2>
+    <p>처음 한 번만 키를 입력하면 이 브라우저에 저장되고 다음 실행부터 자동 연결돼. GitHub Pages는 정적 호스팅이라 API 키를 코드에 박아 넣지는 않아.</p>
+    <div class="warn">⚠ 공개/공용 기기에서는 저장하지 마. 정식 서비스 단계에서는 서버 프록시로 키를 숨기는 게 맞아.</div>
+    <input id="apiKeyInput" class="input" type="password" placeholder="OpenAI API key">
+    <input id="modelInput" class="input top-gap" value="gpt-5.6" placeholder="모델명">
+    <div class="two">
+      <button id="saveApiBtn" class="big dark">저장 · 자동연결</button>
+      <button id="forgetApiBtn" class="big">저장 키 삭제</button>
+    </div>
+    <button id="closeApiBtn" class="big">닫기</button>
+  </div>
+</div>
+
+<div id="installModal" class="modal-wrap hidden">
+  <div class="modal">
+    <span class="eyebrow">INSTALL</span>
+    <h2>폰에 설치하기</h2>
+    <div id="installGuide" class="install-guide"></div>
+    <button id="nativeInstallBtn" class="big dark hidden">지금 설치</button>
+    <button id="closeInstallBtn" class="big">닫기</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="./app.js"></script>
+</body>
+</html>
