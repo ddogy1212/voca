@@ -1,8 +1,11 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v1",K_API_STATS="vw_api_stats_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
 const todayCacheSaved=load(K_TODAY_CACHE,{date:"",queue:[],display:[]});
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
+const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
+const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
+const apiStatsSaved=load(K_API_STATS,{date:"",calls:0,cacheHits:0});
 const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
@@ -11,6 +14,7 @@ const S={
   testMode:"meaning",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
+  gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
   filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
   todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
   todaySeen:load(K_TODAY,[])
@@ -310,6 +314,91 @@ $("#saveApiBtn").onclick=()=>{
 };
 $("#forgetApiBtn").onclick=()=>{localStorage.removeItem(K_API);S.apiKey="";$("#apiKeyInput").value="";$("#apiDot").classList.remove("on");toast("저장 키 삭제 완료")};
 function needApi(){if(S.apiKey)return true;$("#apiModal").classList.remove("hidden");toast("처음 한 번 API 키를 넣어줘.");return false}
+
+function statsToday(){
+  const d=new Date().toISOString().slice(0,10);
+  if(S.apiStats.date!==d)S.apiStats={date:d,calls:0,cacheHits:0};
+}
+function saveApiStats(){
+  statsToday();
+  localStorage.setItem(K_API_STATS,JSON.stringify(S.apiStats));
+}
+function noteApiCall(){
+  statsToday();S.apiStats.calls=(S.apiStats.calls||0)+1;saveApiStats();
+}
+function noteCacheHit(){
+  statsToday();S.apiStats.cacheHits=(S.apiStats.cacheHits||0)+1;saveApiStats();
+}
+function saveGradeCache(){
+  localStorage.setItem(K_GRADE_CACHE,JSON.stringify(S.gradeCache));
+}
+function gradeCacheKey(w,a){
+  return [norm(w.term),norm(a),(w.meanings||[]).map(norm).sort().join("|")].join("::");
+}
+function getGradeCache(w,a){
+  const k=gradeCacheKey(w,a),v=S.gradeCache?.items?.[k];
+  if(v){noteCacheHit();return v}
+  return null;
+}
+function putGradeCache(w,a,v){
+  if(!S.gradeCache||typeof S.gradeCache!=="object")S.gradeCache={items:{},order:[]};
+  if(!S.gradeCache.items)S.gradeCache.items={};
+  if(!Array.isArray(S.gradeCache.order))S.gradeCache.order=[];
+  const k=gradeCacheKey(w,a);
+  if(!S.gradeCache.items[k])S.gradeCache.order.push(k);
+  S.gradeCache.items[k]=v;
+  while(S.gradeCache.order.length>400){
+    const old=S.gradeCache.order.shift();
+    delete S.gradeCache.items[old];
+  }
+  saveGradeCache();
+}
+function savePhotoCache(){
+  localStorage.setItem(K_PHOTO_CACHE,JSON.stringify(S.photoCache));
+}
+function photoCacheKey(){
+  const source=$("#sourceLabel").value.trim();
+  const parts=S.photos.map(p=>{
+    const f=p.file;
+    return [p.name,p.size,f?.lastModified||0].join(":");
+  });
+  return [S.mode,source,...parts].join("||");
+}
+function getPhotoCache(){
+  const k=photoCacheKey(),v=S.photoCache?.items?.[k];
+  if(v){noteCacheHit();return JSON.parse(JSON.stringify(v))}
+  return null;
+}
+function putPhotoCache(value){
+  if(!S.photoCache||typeof S.photoCache!=="object")S.photoCache={items:{},order:[]};
+  if(!S.photoCache.items)S.photoCache.items={};
+  if(!Array.isArray(S.photoCache.order))S.photoCache.order=[];
+  const k=photoCacheKey();
+  if(!S.photoCache.items[k])S.photoCache.order.push(k);
+  S.photoCache.items[k]=value;
+  while(S.photoCache.order.length>12){
+    const old=S.photoCache.order.shift();
+    delete S.photoCache.items[old];
+  }
+  savePhotoCache();
+}
+function compactKorean(s){
+  return norm(s)
+    .replace(/[()[\]{}.,!?·ㆍ:;'"“”‘’/\\\-_\s]/g,"")
+    .replace(/(하는것|한것|한다|하다|된다|되다|시키다|시킨다|임|이다)$/,"");
+}
+function localMeaningMatch(answer,meanings){
+  const a=compactKorean(answer);
+  if(a.length<1)return false;
+  return (meanings||[]).some(m=>{
+    const x=compactKorean(m);
+    if(!x)return false;
+    if(x===a)return true;
+    if(x.length>=2&&a.length>=2&&(x.includes(a)||a.includes(x)))return true;
+    return false;
+  });
+}
+
 function responseText(d){
   let text="";
   for(const out of(d.output||[]))if(out.type==="message")for(const c of(out.content||[]))if(c.type==="output_text")text+=c.text||"";
@@ -336,13 +425,14 @@ function startProgress(prefix,label,detail,start=3,cap=88){
   progressTimers[prefix]=setInterval(()=>{if(pct>=cap)return;const step=pct<35?2:pct<65?1.2:.55;pct=Math.min(cap,pct+step);setProgress(prefix,pct)},650);
 }
 function stopProgress(prefix){clearInterval(progressTimers[prefix]);delete progressTimers[prefix]}
-async function openai(body,{prefix=null,timeoutMs=75000,retries=2}={}){
+async function openai(body,{prefix=null,timeoutMs=75000,retries=1}={}){
   if(!needApi())throw Error("API 키 필요");
   let lastErr;
   for(let attempt=0;attempt<=retries;attempt++){
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
+      noteApiCall();
       const r=await fetch("https://api.openai.com/v1/responses",{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":"Bearer "+S.apiKey},
@@ -670,28 +760,24 @@ function canvasToData(canvas,quality=.92){
 
 async function prepareImageForHighDetail(file){
   const type=String(file.type||"").toLowerCase();
-
-  // 이미 작고 API가 직접 받을 수 있는 형식이면 재인코딩하지 않음
-  if(/image\/(jpeg|jpg|png|webp)/i.test(type) && file.size<=2400000){
-    return {data:await fileToData(file),bytes:file.size};
-  }
-
   let decoded;
   try{
     decoded=await loadImageFromFile(file);
   }catch(e){
     if(/heic|heif/i.test(type+" "+file.name)){
-      throw Error("HEIC/HEIF 사진을 이 브라우저가 변환하지 못했어. 갤럭시 카메라의 '고효율 사진'을 잠시 끄고 JPEG로 찍어줘.");
+      throw Error("HEIC/HEIF 사진을 이 브라우저가 변환하지 못했어. JPEG로 찍어서 다시 넣어줘.");
     }
     throw e;
   }
 
   try{
+    // API 절약: 휴대폰 원본을 그대로 보내지 않고
+    // 단어 판독에 필요한 수준으로만 축소한다.
     const pixels=decoded.width*decoded.height;
     const scale=Math.min(
       1,
-      2048/Math.max(decoded.width,decoded.height),
-      Math.sqrt(2500000/Math.max(1,pixels))
+      1800/Math.max(decoded.width,decoded.height),
+      Math.sqrt(1800000/Math.max(1,pixels))
     );
 
     const c=document.createElement("canvas");
@@ -703,7 +789,7 @@ async function prepareImageForHighDetail(file){
     ctx.fillRect(0,0,c.width,c.height);
     ctx.drawImage(decoded.source,0,0,c.width,c.height);
 
-    return await canvasToData(c,.92);
+    return await canvasToData(c,.88);
   }finally{
     decoded.close?.();
   }
@@ -759,14 +845,14 @@ function onePassPhotoPrompt(){
   const base=extractionPrompt();
   return `${base}
 
-추가 검증 규칙:
-- 사진을 먼저 직접 읽고 각 철자/행 대응을 스스로 재검토한다.
-- 그 다음 웹 검색 도구를 딱 한 번의 검증 패스로 사용해서, 특히 철자가 이상하거나 뜻 대응이 의심스러운 항목을 묶어서 확인한다.
-- 존재하지 않는 철자, 명백한 오독, 영어-한국어 행이 엇갈린 항목은 수정하거나 제외한다.
+비용 절약 검증 규칙:
+- 사진을 먼저 직접 읽고 철자와 행 대응을 두 번 자체 검토한다.
+- 철자/뜻 대응이 명확한 항목은 웹 검색을 하지 않는다.
+- 철자가 이상하거나 존재 여부가 의심되거나, 영어-한국어 행 대응이 애매한 항목이 하나라도 있으면 그 의심 항목들만 묶어서 웹 검색 도구로 확인한다.
 - 검색 결과만 믿고 사진과 다른 단어로 바꾸지 마라.
-- 최종 JSON에는 corrections 배열과 verificationNote를 추가한다.
-- corrections: [{"before":"처음 읽은 값","after":"최종 값","reason":"짧은 이유"}]
-- verificationNote는 "원본 재검토 + 웹 검색 검증 완료"로 한다.
+- 명백한 오독은 수정 또는 제외한다.
+- corrections 배열과 verificationNote를 추가한다.
+- 검색을 사용했으면 verificationNote="원본 재검토 + 의심 항목 웹 검증 완료", 검색이 필요 없었으면 verificationNote="원본 재검토 완료 · 의심 항목 없음".
 - JSON 이외의 텍스트는 출력하지 마라.`;
 }
 $("#analyzeBtn").onclick=async()=>{
@@ -774,34 +860,60 @@ $("#analyzeBtn").onclick=async()=>{
   const btn=$("#analyzeBtn");
   btn.disabled=true;
   $("#extractPanel").classList.add("hidden");
-  startProgress("analysis","사진 준비 중","선택한 사진을 확인하고 있어.",3,91);
+  startProgress("analysis","사진 확인 중","같은 사진을 이미 분석했는지 먼저 확인하고 있어.",3,91);
   try{
+    const cached=getPhotoCache();
+    if(cached){
+      S.extracted=cached;
+      renderExtract();bindPickEditors();
+      setProgress("analysis",100,"캐시에서 완료","같은 사진 분석 결과를 재사용해서 API를 쓰지 않았어.");
+      stopProgress("analysis");
+      setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
+      $("#extractPanel").classList.remove("hidden");
+      $("#extractPanel").scrollIntoView({behavior:"smooth"});
+      return;
+    }
+
     await prepareSelectedPhotosForApi();
     const total=S.photos.reduce((a,p)=>a+(p.preparedBytes||p.size||0),0);
-    if(total>18*1024*1024)throw Error("최적화 후에도 사진 용량이 커. 4장씩 나눠서 해줘.");
-    setProgress("analysis",27,"AI로 전송 중",`${S.photos.length}장 준비 완료 · 사진 인식과 검색 검증을 시작해.`);
+    if(total>14*1024*1024)throw Error("최적화 후에도 사진 용량이 커. 4장씩 나눠서 해줘.");
+
+    setProgress("analysis",27,"AI로 전송 중",`${S.photos.length}장 · 필요한 경우에만 웹 검증해.`);
     const result=await openai({
       model:taskModel("photo"),
       reasoning:{effort:"none"},
       text:{verbosity:"low"},
-      max_output_tokens:6500,
+      max_output_tokens:4600,
       max_tool_calls:1,
       parallel_tool_calls:false,
       tools:[{type:"web_search",search_context_size:"low"}],
-      tool_choice:"required",
+      tool_choice:"auto",
       input:[{role:"user",content:[{type:"input_text",text:onePassPhotoPrompt()},...imageContent()]}]
-    },{prefix:"analysis",timeoutMs:80000,retries:2});
-    setProgress("analysis",93,"결과 정리 중","철자와 뜻의 중복·오인식 표시를 정리하고 있어.");
+    },{prefix:"analysis",timeoutMs:75000,retries:1});
+
+    setProgress("analysis",93,"결과 정리 중","인식 결과를 정리하고 있어.");
     const usedSearch=(result.output||[]).some(x=>x.type==="web_search_call");
-    if(!usedSearch)throw Error("검색 검증이 실행되지 않았어. 다시 시도해줘.");
-    S.extracted=parseAIJSON(responseText(result));S.extracted.webVerified=true;renderExtract();bindPickEditors();
-    setProgress("analysis",100,"완료","AI 인식 + 웹 검색 검증이 끝났어.");
+    S.extracted=parseAIJSON(responseText(result));
+    S.extracted.webVerified=true;
+    S.extracted.usedWebSearch=usedSearch;
+    if(!S.extracted.verificationNote){
+      S.extracted.verificationNote=usedSearch?"원본 재검토 + 의심 항목 웹 검증 완료":"원본 재검토 완료 · 의심 항목 없음";
+    }
+    putPhotoCache(S.extracted);
+    renderExtract();bindPickEditors();
+
+    setProgress("analysis",100,"완료",usedSearch?"의심 항목만 웹 검색해서 검증했어.":"웹 검색 없이 원본 자체 검토로 끝냈어.");
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
-    $("#extractPanel").classList.remove("hidden");$("#extractPanel").scrollIntoView({behavior:"smooth"});
+    $("#extractPanel").classList.remove("hidden");
+    $("#extractPanel").scrollIntoView({behavior:"smooth"});
   }catch(e){
-    stopProgress("analysis");setProgress("analysis",0,"실패",e.message);toast(e.message);
-  }finally{btn.disabled=false}
+    stopProgress("analysis");
+    setProgress("analysis",0,"실패",e.message);
+    toast(e.message);
+  }finally{
+    btn.disabled=false;
+  }
 };
 function relText(x){return [x.synonyms?.length?"동의: "+x.synonyms.join(", "):"",x.antonyms?.length?"반의: "+x.antonyms.join(", "):"",x.derivatives?.length?"파생: "+x.derivatives.join(", "):""].filter(Boolean).join(" · ")}
 function pick(x,key,checked){
@@ -902,20 +1014,32 @@ function saveTodayCache(){
   localStorage.setItem(K_TODAY_CACHE,JSON.stringify({date:new Date().toISOString().slice(0,10),queue:S.todayQueue,display:S.todayWords}));
 }
 function todayPrompt(){
-  const current=S.words.slice(-100).map(w=>({term:w.term,meaning:w.meanings?.[0]||"",strength:w.strength||0,wrong:w.wrong||0}));
-  const exclude=[...new Set([...S.words.map(w=>w.term),...S.todaySeen,...S.todayQueue.map(x=>x.term),...S.todayWords.map(x=>x.term)])].slice(-350);
-  return `한국 고등학생의 수능/평가원·교육청 모의고사 영어 독해 어휘 코치다.
-웹 검색을 한 번 사용해 KICE/평가원, EBS, 교육자료, 신뢰 가능한 영어 사전 등에서 수능·모의고사 독해에 실제로 유용한 어휘인지 확인한다.
-학생의 현재 단어장과 연결 학습이 되는 어휘도 포함한다.
-총 15개를 고른다:
-- 약 5개: 현재 학습 단어와 동의어/반의어/파생어/혼동어로 연결되는 단어
-- 약 10개: 수능·모의고사 독해에서 폭넓게 알아둘 가치가 큰 학술·추상 어휘
-이미 단어장에 있거나 제외 목록에 있는 단어는 절대 넣지 않는다.
-'공식 출제 빈도 순위'처럼 근거 없는 표현은 쓰지 않는다.
-현재 학습:${JSON.stringify(current)}
+  const ranked=[...S.words].sort((a,b)=>{
+    const ar=(a.wrong||0)*3+(a.skipCount||0)*3-(a.strength||0);
+    const br=(b.wrong||0)*3+(b.skipCount||0)*3-(b.strength||0);
+    return br-ar;
+  });
+  const current=ranked.slice(0,35).map(w=>({
+    term:w.term,
+    meaning:w.meanings?.[0]||"",
+    wrong:w.wrong||0,
+    skip:w.skipCount||0
+  }));
+  const exclude=[...new Set([
+    ...S.words.map(w=>w.term),
+    ...S.todaySeen,
+    ...S.todayQueue.map(x=>x.term),
+    ...S.todayWords.map(x=>x.term)
+  ])].slice(-160);
+
+  return `한국 고등학생 영어 독해 어휘 코치다.
+웹 검색 1회로 수능·모의고사 독해에 유용한지 확인하고 새 단어 15개를 추천한다.
+약 5개는 현재 약한 단어와 연결되는 동의어·반의어·파생어·혼동어, 약 10개는 폭넓게 유용한 학술·추상 어휘로 한다.
+이미 있는 단어와 제외 목록은 넣지 않는다.
+현재 약한 단어:${JSON.stringify(current)}
 제외:${JSON.stringify(exclude)}
-JSON 하나만 출력:
-{"items":[{"term":"영어 표제어","meanings":["독해 핵심 한국어 뜻"],"partOfSpeech":"품사","context":"독해에서 어떻게 이해하면 되는지","synonyms":["핵심 동의어"],"antonyms":["필요한 반의어"],"derivatives":["중요 파생형"],"importance":1,"sourceType":"today","sourceLabel":"오늘의 단어","origin":"linked|exam","reason":"추천 이유"}],"note":"웹 검색 검증 완료"}`;
+JSON만:
+{"items":[{"term":"영어","meanings":["핵심 한국어 뜻"],"partOfSpeech":"품사","context":"독해 핵심","synonyms":["동의어"],"antonyms":["반의어"],"derivatives":["파생형"],"importance":1,"sourceType":"today","sourceLabel":"오늘의 단어","origin":"linked|exam","reason":"짧은 이유"}]}`;
 }
 function showFiveFromTodayQueue(){
   const take=S.todayQueue.splice(0,5);
@@ -929,13 +1053,13 @@ async function fetchTodayBatch(){
     model:taskModel("fast"),
     reasoning:{effort:"none"},
     text:{verbosity:"low"},
-    max_output_tokens:3600,
+    max_output_tokens:2600,
     max_tool_calls:1,
     parallel_tool_calls:false,
     tools:[{type:"web_search",search_context_size:"low"}],
     tool_choice:"required",
     input:todayPrompt()
-  },{prefix:"today",timeoutMs:55000,retries:2});
+  },{prefix:"today",timeoutMs:50000,retries:1});
   setProgress("today",92,"추천 목록 정리 중","중복과 이미 외우는 단어를 한 번 더 제거하고 있어.");
   if(!(d.output||[]).some(x=>x.type==="web_search_call"))throw Error("웹 검색이 실행되지 않았어.");
   const j=parseAIJSON(responseText(d));
@@ -1119,15 +1243,32 @@ $("#gradeBtn").onclick=async()=>{
   try{
     let d;if(S.testMode==="reverse"){const ok=norm(a)===norm(w.term);d={verdict:ok?"correct":"wrong",reason:ok?"철자가 일치해.":`정답은 ${w.term}`,acceptedMeaning:w.term}}
     else{
-      const exact=[...(w.meanings||[])].some(m=>{const x=norm(m),y=norm(a);return x===y||(x.length>=2&&y.length>=2&&(x.includes(y)||y.includes(x)))});
-      if(exact)d={verdict:"correct",reason:"등록된 핵심 의미와 직접 일치해.",acceptedMeaning:w.meanings[0]||""};
-      else{if(!needApi())throw Error("AI 연결 필요");const prompt=`영어 뜻 테스트를 한국 고등학생 독해 기준으로 채점하라.
+      const exact=localMeaningMatch(a,w.meanings||[]);
+      if(exact){
+        d={verdict:"correct",reason:"등록된 핵심 의미와 일치해.",acceptedMeaning:w.meanings[0]||""};
+      }else{
+        const cached=getGradeCache(w,a);
+        if(cached){
+          d=cached;
+        }else{
+          if(!needApi())throw Error("AI 연결 필요");
+          const prompt=`영어 뜻 테스트 채점.
 단어:${w.term}
 등록 뜻:${JSON.stringify(w.meanings)}
 문맥:${w.context||"(없음)"}
 학생 답:${a}
-사전 표현과 달라도 실제 독해에서 핵심 의미 파악에 지장이 없으면 correct, 방향은 맞지만 오해 가능하면 almost, 다른 뜻이면 wrong.
-JSON 하나만:{"verdict":"correct"|"almost"|"wrong","reason":"한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;d=parseAIJSON(responseText(await openai({model:taskModel("fast"),reasoning:{effort:"none"},text:{verbosity:"low"},max_output_tokens:350,input:prompt},{timeoutMs:30000,retries:1})))}
+핵심 의미가 같으면 correct, 방향은 맞지만 부족하면 almost, 다르면 wrong.
+JSON만:{"verdict":"correct"|"almost"|"wrong","reason":"짧은 한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;
+          d=parseAIJSON(responseText(await openai({
+            model:taskModel("fast"),
+            reasoning:{effort:"none"},
+            text:{verbosity:"low"},
+            max_output_tokens:220,
+            input:prompt
+          },{timeoutMs:25000,retries:0})));
+          putGradeCache(w,a,d);
+        }
+      }
     }
     const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);if(ok){rewardRecord("test",w.id);S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#graduateBtn").disabled=false;$("#nextBtn").classList.remove("hidden");
   }catch(e){
@@ -1460,11 +1601,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();ensureRewardDay();saveReward();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=063",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=065",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v6-3-good2-fix";
+const CACHE="vocabwalk-v6-5-api-saver";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=063",
-  "./app.js?v=063",
+  "./styles.css?v=065",
+  "./app.js?v=065",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
