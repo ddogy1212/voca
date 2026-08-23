@@ -1,14 +1,16 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
 const todayCacheSaved=load(K_TODAY_CACHE,{date:"",queue:[],display:[]});
+const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
 const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,
-  testMode:"meaning",testScope:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
+  testMode:"meaning",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
+  reward:rewardSaved,rewardSeriesView:0,
   filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
   todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
   todaySeen:load(K_TODAY,[])
@@ -86,10 +88,215 @@ function sourceGroups(){
 }
 function avg(arr,fn){return arr.length?arr.reduce((s,x)=>s+fn(x),0)/arr.length:0}
 function markReviewed(w){w.lastReviewedAt=now()}
+
+const REWARD_SERIES=[
+  {id:"sky",name:"밤하늘 기록",desc:"8조각을 모으면 전체 밤하늘이 완성돼.",className:"series-sky"},
+  {id:"aurora",name:"오로라 기록",desc:"차분한 오로라 장면을 8조각으로 모아.",className:"series-aurora"},
+  {id:"city",name:"밤의 도시",desc:"도시의 불빛을 하나씩 완성해.",className:"series-city"},
+  {id:"paper",name:"종이 위의 별자리",desc:"마지막 조각까지 모으면 전체 구도가 드러나.",className:"series-paper"}
+];
+const SECRET_CARDS=[
+  {title:"시험에서 자주 생기는 착각",body:"동의어는 100% 같은 뜻이 아니야. 실제 문제에서는 문맥에 자연스럽게 들어가는지까지 보는 경우가 많아."},
+  {title:"adapt / adopt",body:"adapt는 ‘적응시키다·적응하다’, adopt는 ‘채택하다·입양하다’. 철자가 비슷해서 독해에서 빠르게 헷갈리기 쉬워."},
+  {title:"economic / economical",body:"economic은 ‘경제의’, economical은 보통 ‘경제적인·절약되는’. 형태가 비슷해도 쓰임이 갈려."},
+  {title:"imply / infer",body:"imply는 말하는 쪽이 ‘암시하다’, infer는 읽거나 듣는 쪽이 ‘추론하다’. 주체를 보면 구분하기 쉬워."},
+  {title:"respectively",body:"respectively가 나오면 앞뒤 항목의 순서를 연결해서 읽어. 긴 문장에서 대응 관계를 빠르게 잡는 신호가 돼."},
+  {title:"however의 함정",body:"however를 무조건 ‘그러나’로만 외우지 마. ‘아무리 ~해도’나 ‘어떻게 ~하든’처럼 쓰이는 경우도 있어."},
+  {title:"파생어를 같이 외우는 이유",body:"품사가 바뀌면 문장 속 자리도 달라져. 단어 하나보다 명사·형용사·동사 묶음으로 기억하면 변형 문제에 강해져."},
+  {title:"뜻을 여러 개 외울 때",body:"뜻을 전부 똑같이 외우기보다 가장 자주 쓰는 핵심 의미 하나를 중심에 두고 문맥별 의미를 가지처럼 붙이는 편이 기억하기 쉬워."},
+  {title:"비슷한 철자가 보이면",body:"철자 차이가 1~2글자인 단어는 따로 외우기보다 둘을 한 화면에서 비교하는 게 좋아. 앱 리포트의 ‘헷갈릴 가능성이 큰 단어’를 활용해."},
+  {title:"모르겠음 버튼의 의미",body:"넘기기는 실패가 아니라 복습 신호야. 모르는 순간을 정확히 표시해야 다음 암기에서 그 단어가 더 자주 나와."},
+  {title:"문맥에서 뜻이 흐릿할 때",body:"문장 전체 번역보다 그 단어가 긍정·부정인지, 원인·결과인지, 증가·감소인지부터 잡으면 선택지를 빠르게 줄일 수 있어."},
+  {title:"반의어가 강한 이유",body:"한 단어를 반대말과 묶어 기억하면 의미의 경계가 선명해져. 변형어 시험에서 반의어까지 함께 보는 이유야."}
+];
+
+function rewardToday(){
+  return new Date().toISOString().slice(0,10);
+}
+function ensureRewardDay(){
+  const today=rewardToday();
+  if(S.reward.date!==today){
+    S.reward.date=today;
+    S.reward.reviewIds=[];
+    S.reward.testIds=[];
+    S.reward.transformKeys=[];
+    S.reward.claimed=false;
+  }
+  if(!Array.isArray(S.reward.reviewIds))S.reward.reviewIds=[];
+  if(!Array.isArray(S.reward.testIds))S.reward.testIds=[];
+  if(!Array.isArray(S.reward.transformKeys))S.reward.transformKeys=[];
+  if(!Array.isArray(S.reward.history))S.reward.history=[];
+  if(!S.reward.seriesPieces||typeof S.reward.seriesPieces!=="object")S.reward.seriesPieces={};
+  if(!Array.isArray(S.reward.secretSeen))S.reward.secretSeen=[];
+}
+function saveReward(){
+  ensureRewardDay();
+  localStorage.setItem(K_REWARD,JSON.stringify(S.reward));
+}
+function rewardGoals(){
+  const words=Math.max(0,S.words.length);
+  const testable=S.words.filter(w=>w.testEnabled!==false).length;
+  const transformable=S.words.filter(w=>(w.synonyms||[]).length||(w.antonyms||[]).length||(w.derivatives||[]).length).length;
+  return {
+    review:words?Math.min(8,Math.max(3,words)):0,
+    test:testable?Math.min(5,Math.max(2,testable)):0,
+    transform:transformable?Math.min(3,Math.max(1,transformable)):0
+  };
+}
+function rewardProgress(){
+  ensureRewardDay();
+  const g=rewardGoals();
+  const parts=[];
+  if(g.review)parts.push(Math.min(1,S.reward.reviewIds.length/g.review));
+  if(g.test)parts.push(Math.min(1,S.reward.testIds.length/g.test));
+  if(g.transform)parts.push(Math.min(1,S.reward.transformKeys.length/g.transform));
+  const pct=parts.length?Math.round(parts.reduce((a,b)=>a+b,0)/parts.length*100):0;
+  const ready=parts.length>0&&parts.every(x=>x>=1);
+  return {g,pct,ready};
+}
+function rewardRecord(kind,key){
+  ensureRewardDay();
+  if(!key)return;
+  if(kind==="review"&&!S.reward.reviewIds.includes(key))S.reward.reviewIds.push(key);
+  if(kind==="test"&&!S.reward.testIds.includes(key))S.reward.testIds.push(key);
+  if(kind==="transform"&&!S.reward.transformKeys.includes(key))S.reward.transformKeys.push(key);
+  saveReward();
+  renderRewardStrip();
+}
+function renderRewardStrip(){
+  ensureRewardDay();
+  const {g,pct,ready}=rewardProgress();
+  const strip=$("#rewardStrip");
+  if(!strip)return;
+  strip.classList.toggle("ready",ready&&!S.reward.claimed);
+  strip.classList.toggle("claimed",S.reward.claimed);
+  $("#rewardMiniProgress span").style.width=(S.reward.claimed?100:pct)+"%";
+
+  const chunks=[];
+  if(g.review)chunks.push(`암기 ${Math.min(S.reward.reviewIds.length,g.review)}/${g.review}`);
+  if(g.test)chunks.push(`테스트 ${Math.min(S.reward.testIds.length,g.test)}/${g.test}`);
+  if(g.transform)chunks.push(`변형 ${Math.min(S.reward.transformKeys.length,g.transform)}/${g.transform}`);
+
+  if(S.reward.claimed){
+    $("#rewardIcon").textContent="✓";
+    $("#rewardTitle").textContent="오늘의 봉투 받음";
+    $("#rewardProgressText").textContent="내일 다시 하나 열 수 있어.";
+    $("#openRewardBtn").textContent="완료";
+    $("#openRewardBtn").disabled=true;
+  }else if(ready){
+    $("#rewardIcon").textContent="✉️";
+    $("#rewardTitle").textContent="오늘의 봉투 · 열 수 있음";
+    $("#rewardProgressText").textContent="오늘 학습 조건을 모두 채웠어.";
+    $("#openRewardBtn").textContent="열기";
+    $("#openRewardBtn").disabled=false;
+  }else{
+    $("#rewardIcon").textContent="🎁";
+    $("#rewardTitle").textContent="오늘의 봉투";
+    $("#rewardProgressText").textContent=chunks.length?chunks.join(" · "):"단어를 추가하면 시작돼.";
+    $("#openRewardBtn").textContent="잠김";
+    $("#openRewardBtn").disabled=true;
+  }
+}
+function deterministicInt(seed,max){
+  let h=2166136261;
+  for(const ch of String(seed)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}
+  return Math.abs(h>>>0)%max;
+}
+function currentRewardSeriesIndex(){
+  for(let i=0;i<REWARD_SERIES.length;i++){
+    const pieces=S.reward.seriesPieces[REWARD_SERIES[i].id]||[];
+    if(pieces.length<8)return i;
+  }
+  return REWARD_SERIES.length-1;
+}
+function renderCollectionBoard(target,seriesIndex){
+  const series=REWARD_SERIES[seriesIndex]||REWARD_SERIES[0];
+  const pieces=S.reward.seriesPieces[series.id]||[];
+  target.className=`collection-board ${series.className}`;
+  target.innerHTML=Array.from({length:8},(_,i)=>`<div class="collection-tile ${pieces.includes(i)?"":"locked"}"></div>`).join("");
+}
+function renderCollectionView(seriesIndex=S.rewardSeriesView||0){
+  ensureRewardDay();
+  const series=REWARD_SERIES[seriesIndex]||REWARD_SERIES[0];
+  S.rewardSeriesView=seriesIndex;
+  const pieces=S.reward.seriesPieces[series.id]||[];
+  $("#collectionTitle").textContent=series.name;
+  $("#collectionDesc").textContent=`${series.desc} · ${pieces.length}/8`;
+  renderCollectionBoard($("#collectionBoard"),seriesIndex);
+  $("#collectionSeriesTabs").innerHTML=REWARD_SERIES.map((s,i)=>{
+    const n=(S.reward.seriesPieces[s.id]||[]).length;
+    return `<button class="collection-tab ${i===seriesIndex?"active":""}" data-series="${i}">${esc(s.name)} ${n}/8</button>`;
+  }).join("");
+  $$("[data-series]").forEach(b=>b.onclick=()=>renderCollectionView(+b.dataset.series));
+}
+function showRewardPane(id){
+  ["rewardOpening","rewardPieceResult","rewardSecretResult","collectionView"].forEach(x=>$("#"+x).classList.toggle("hidden",x!==id));
+}
+function closeRewardModal(){
+  $("#rewardModal").classList.add("hidden");
+  renderRewardStrip();
+}
+$("#openRewardBtn").onclick=()=>{
+  const p=rewardProgress();
+  if(!p.ready||S.reward.claimed)return;
+  showRewardPane("rewardOpening");
+  $("#rewardModal").classList.remove("hidden");
+};
+$("#collectionBtn").onclick=()=>{
+  renderCollectionView(currentRewardSeriesIndex());
+  showRewardPane("collectionView");
+  $("#rewardModal").classList.remove("hidden");
+};
+$("#closeRewardBtn").onclick=closeRewardModal;
+$("#collectionCloseBtn").onclick=closeRewardModal;
+$("#pieceDoneBtn").onclick=closeRewardModal;
+$("#secretDoneBtn").onclick=closeRewardModal;
+
+$("#revealRewardBtn").onclick=()=>{
+  ensureRewardDay();
+  if(S.reward.claimed)return closeRewardModal();
+
+  const seriesIndex=currentRewardSeriesIndex();
+  const series=REWARD_SERIES[seriesIndex];
+  const pieces=S.reward.seriesPieces[series.id]||[];
+  const seed=rewardToday()+"|"+S.words.length+"|"+S.reward.reviewIds.length+"|"+S.reward.testIds.length;
+  const pieceChance=pieces.length<8 && deterministicInt(seed+"type",100)<68;
+
+  let result;
+  if(pieceChance){
+    const missing=Array.from({length:8},(_,i)=>i).filter(i=>!pieces.includes(i));
+    const piece=missing[deterministicInt(seed+"piece",missing.length)];
+    pieces.push(piece);
+    pieces.sort((a,b)=>a-b);
+    S.reward.seriesPieces[series.id]=pieces;
+    result={type:"piece",series:series.id,piece};
+    $("#pieceResultText").textContent=`${series.name} · ${pieces.length}/8${pieces.length===8?" · 완성!":""}`;
+    renderCollectionBoard($("#pieceResultPreview"),seriesIndex);
+    showRewardPane("rewardPieceResult");
+  }else{
+    let available=SECRET_CARDS.map((_,i)=>i).filter(i=>!S.reward.secretSeen.includes(i));
+    if(!available.length){S.reward.secretSeen=[];available=SECRET_CARDS.map((_,i)=>i)}
+    const idx=available[deterministicInt(seed+"secret",available.length)];
+    const card=SECRET_CARDS[idx];
+    S.reward.secretSeen.push(idx);
+    result={type:"secret",index:idx};
+    $("#secretTitle").textContent=card.title;
+    $("#secretBody").textContent=card.body;
+    showRewardPane("rewardSecretResult");
+  }
+
+  S.reward.claimed=true;
+  S.reward.history.push({date:rewardToday(),...result});
+  if(S.reward.history.length>180)S.reward.history=S.reward.history.slice(-180);
+  saveReward();
+  renderRewardStrip();
+};
+
 function renderHome(){
   const due=S.words.filter(w=>(w.dueAt||0)<=now()),weak=S.words.filter(w=>weakness(w)>=45),tries=S.meta.correct+S.meta.wrong;
   $("#dueHero").textContent=`복습 ${due.length}개`;$("#totalStat").textContent=S.words.length;$("#weakStat").textContent=weak.length;$("#accStat").textContent=tries?Math.round(S.meta.correct/tries*100)+"%":"-";$("#streak").textContent=S.meta.streak||0;
   $("#heroSub").textContent=S.words.length?(due.length?"지금 복습할 단어부터 빠르게 털자.":"오늘 예정 복습은 끝났어."):"하단 ＋에서 사진을 추가해.";
+  renderRewardStrip();
   const list=$("#dueList");if(!due.length){list.className="mini-list empty";list.textContent=S.words.length?"지금 밀린 복습은 없어.":"아직 단어가 없어."}
   else{list.className="mini-list";list.innerHTML=due.sort((a,b)=>weakness(b)-weakness(a)).slice(0,5).map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`).join("")}
 }
@@ -763,12 +970,21 @@ function applyMemory(w,g){
   studyTouch();markReviewed(w);w.seen=(w.seen||0)+1;if(w.goodCount===undefined)w.goodCount=0;if(w.testEnabled===undefined)w.testEnabled=true;
   if(g==="again")w.wrong=(w.wrong||0)+1;
   if(g==="good"){
+    rewardRecord("review",w.id);
     w.correct=(w.correct||0)+1;
     w.goodCount++;
     w.skipCount=Math.max(0,(w.skipCount||0)-1);
-    if(w.goodCount>=2&&w.testEnabled!==false){
-      w.testEnabled=false;
-      toast(`✅ ${w.term}: 앎 2회 → 시험 졸업`);
+    if(w.goodCount>=2){
+      if(w.testEnabled!==false)w.testEnabled=false;
+
+      // 같은 세션에서 '넘김' 가중치 때문에 미리 복제된 동일 단어도 즉시 제거.
+      // 현재 인덱스 이전은 유지하고, 이후에 남은 동일 id만 삭제한다.
+      if(Array.isArray(S.reviewQueue)){
+        const currentIndex=S.reviewIndex;
+        S.reviewQueue=S.reviewQueue.filter((item,idx)=>idx<=currentIndex || item.id!==w.id);
+      }
+
+      toast(`✅ ${w.term}: 앎 2회 → 암기·시험 졸업`);
     }
   }
   w.dueAt=now()+interval(w,g);save();
@@ -777,6 +993,17 @@ function startReview(shuf=false){
   if(!S.words.length){
     $("#reviewEmpty").classList.remove("hidden");
     $("#reviewArea").classList.add("hidden");
+    $("#reviewEmpty h3").textContent="외울 단어가 없어";
+    $("#reviewEmpty p").textContent="하단 ＋에서 사진이나 단어를 추가해줘.";
+    return;
+  }
+
+  const availableForReview=S.words.filter(w=>(w.goodCount||0)<2);
+  if(!availableForReview.length && !(Array.isArray(S.reviewPreset)&&S.reviewPreset.length)){
+    $("#reviewEmpty").classList.remove("hidden");
+    $("#reviewArea").classList.add("hidden");
+    $("#reviewEmpty h3").textContent="현재 암기할 단어가 없어";
+    $("#reviewEmpty p").textContent="‘앎’ 2회가 된 단어는 암기에서 졸업했어. 보관함에서 ‘시험 넣기’를 누르면 다시 시작할 수 있어.";
     return;
   }
 
@@ -785,13 +1012,16 @@ function startReview(shuf=false){
 
   let base;
   if(Array.isArray(S.reviewPreset)&&S.reviewPreset.length){
-    base=S.reviewPreset.map(id=>S.words.find(w=>w.id===id)).filter(Boolean);
+    base=S.reviewPreset
+      .map(id=>S.words.find(w=>w.id===id))
+      .filter(w=>w&&(w.goodCount||0)<2);
     S.reviewPreset=null;
   }else{
-    const due=S.words
+    const reviewable=S.words.filter(w=>(w.goodCount||0)<2);
+    const due=reviewable
       .filter(w=>(w.dueAt||0)<=now())
       .sort((a,b)=>weakness(b)-weakness(a));
-    base=due.length?due:[...S.words].sort((a,b)=>weakness(b)-weakness(a));
+    base=due.length?due:[...reviewable].sort((a,b)=>weakness(b)-weakness(a));
   }
 
   // 시험에서 넘긴 단어는 같은 암기 세션 안에서도 1~2회 더 등장.
@@ -808,30 +1038,59 @@ function startReview(shuf=false){
   renderReview();
 }
 $("#shuffleBtn").onclick=()=>startReview(true);
+function speakEnglish(text){
+  if(!text||!("speechSynthesis" in window))return;
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang="en-US";
+    u.rate=.84;
+    speechSynthesis.speak(u);
+  }catch{}
+}
 function renderReview(){
   if(S.reviewIndex>=S.reviewQueue.length){toast("이번 암기 끝 ✨");show("home");return}
   const w=S.reviewQueue[S.reviewIndex];S.reviewFlipped=false;$("#reviewProgress").style.width=`${(S.reviewIndex+1)/S.reviewQueue.length*100}%`;$("#reviewTag").textContent=w.sourceType==="passage"?"PASSAGE":w.sourceType==="today"?"TODAY":w.sourceType==="suggested"?"EXTRA":"WORD";$("#reviewTerm").textContent=w.term;$("#reviewPOS").textContent=w.partOfSpeech||"";$("#reviewMeaning").textContent=w.meanings.join(" · ");$("#reviewContext").textContent=w.context||"";$("#reviewBack").classList.add("hidden");$("#memoryBtns").classList.add("hidden");$("#tapHint").classList.remove("hidden");const rel=[];(w.synonyms||[]).forEach(x=>rel.push(`<span class="rel">≈ ${esc(x)}</span>`));(w.antonyms||[]).forEach(x=>rel.push(`<span class="rel">↔ ${esc(x)}</span>`));(w.derivatives||[]).forEach(x=>rel.push(`<span class="rel">↗ ${esc(x)}</span>`));$("#relations").innerHTML=rel.join("");$("#starBtn").textContent=w.star?"★ 중요":"☆ 중요";
+  setTimeout(()=>speakEnglish(w.term),90);
 }
 $("#flash").onclick=()=>{S.reviewFlipped=!S.reviewFlipped;$("#reviewBack").classList.toggle("hidden",!S.reviewFlipped);$("#memoryBtns").classList.toggle("hidden",!S.reviewFlipped);$("#tapHint").classList.toggle("hidden",S.reviewFlipped)};
 $$("[data-memory]").forEach(b=>b.onclick=e=>{e.stopPropagation();applyMemory(S.reviewQueue[S.reviewIndex],b.dataset.memory);S.reviewIndex++;renderReview()});
-$("#speakBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(!w||!("speechSynthesis"in window))return;const u=new SpeechSynthesisUtterance(w.term);u.lang="en-US";u.rate=.85;speechSynthesis.cancel();speechSynthesis.speak(u)};
+$("#speakBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(w)speakEnglish(w.term)};
 $("#starBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(!w)return;w.star=!w.star;save();$("#starBtn").textContent=w.star?"★ 중요":"☆ 중요"};
 let touch=null;$("#flash").addEventListener("touchstart",e=>{const t=e.changedTouches[0];touch={x:t.clientX,y:t.clientY}},{passive:true});$("#flash").addEventListener("touchend",e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y;touch=null;if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)){if(dx<0&&S.reviewIndex<S.reviewQueue.length-1){S.reviewIndex++;renderReview()}else if(dx>0&&S.reviewIndex>0){S.reviewIndex--;renderReview()}}else if(dy<-90&&S.reviewFlipped){applyMemory(S.reviewQueue[S.reviewIndex],"good");S.reviewIndex++;renderReview()}},{passive:true});
 
 /* test */
 $$(".test-mode").forEach(b=>b.onclick=()=>{$$(".test-mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.testMode=b.dataset.test;startTest()});
-$$(".test-scope").forEach(b=>b.onclick=()=>{$$(".test-scope").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.testScope=b.dataset.scope;startTest()});
 $("#restartTest").onclick=startTest;
 $("#clearTestSource").onclick=()=>{S.testSource=null;startTest()};
 
 function startTest(){
   $("#testSourceBanner").classList.toggle("hidden",!S.testSource);
   $("#testSourceName").textContent=S.testSource||"";
+
   let eligible=S.words.filter(w=>w.testEnabled!==false);
   if(S.testSource)eligible=eligible.filter(w=>sourceKey(w)===S.testSource);
-  if(S.testScope==="star")eligible=eligible.filter(w=>w.star);
-  if(!eligible.length){$("#testEmpty").classList.remove("hidden");$("#testArea").classList.add("hidden");$("#testEmptyTitle").textContent=S.testScope==="star"?"시험 가능한 즐겨찾기가 없어":"테스트 목록이 비어 있어";$("#testEmptyText").textContent="단어 보관함에서 ‘시험 넣기’를 누르면 다시 출제돼.";return}
-  $("#testEmpty").classList.add("hidden");$("#testArea").classList.remove("hidden");const ordered=[...eligible].sort((a,b)=>weakness(b)-weakness(a)),top=ordered.slice(0,Math.min(5,ordered.length)),rest=shuffle(ordered.slice(top.length));S.testQueue=shuffle(top).concat(rest).slice(0,Math.min(10,eligible.length));S.testIndex=0;S.testCorrect=0;renderTest();
+
+  if(!eligible.length){
+    $("#testEmpty").classList.remove("hidden");
+    $("#testArea").classList.add("hidden");
+    $("#testEmptyTitle").textContent="테스트 목록이 비어 있어";
+    $("#testEmptyText").textContent="시험졸업 단어는 보관함에서 ‘시험 넣기’를 누르면 다시 출제할 수 있어.";
+    return;
+  }
+
+  $("#testEmpty").classList.add("hidden");
+  $("#testArea").classList.remove("hidden");
+
+  // 시험졸업이 아닌 단어는 전부 한 번씩 본다.
+  // 취약 단어를 앞쪽에 두고, 나머지만 섞는다.
+  const ordered=[...eligible].sort((a,b)=>weakness(b)-weakness(a));
+  const priority=ordered.slice(0,Math.min(8,ordered.length));
+  const rest=shuffle(ordered.slice(priority.length));
+  S.testQueue=[...priority,...rest];
+  S.testIndex=0;
+  S.testCorrect=0;
+  renderTest();
 }
 function renderTest(){
   if(S.testIndex>=S.testQueue.length){toast(`테스트 완료 ${S.testCorrect}/${S.testQueue.length}`);show("home");return}
@@ -841,10 +1100,12 @@ function renderTest(){
   $("#answer").disabled=false;
   $("#gradeBtn").disabled=false;
   $("#skipBtn").disabled=false;
+  $("#graduateBtn").disabled=false;
   $("#gradeBtn").textContent="채점하기";
   $("#resultBox").className="result hidden";
   $("#nextBtn").classList.add("hidden");
   S.lastGrade=null;
+  if(S.testMode==="meaning")setTimeout(()=>speakEnglish(w.term),100);
 }
 $("#answer").onkeydown=e=>{if(e.key==="Enter"){if($("#nextBtn").classList.contains("hidden"))$("#gradeBtn").click();else $("#nextBtn").click()}};
 $("#gradeBtn").onclick=async()=>{
@@ -853,6 +1114,7 @@ $("#gradeBtn").onclick=async()=>{
   const btn=$("#gradeBtn");
   btn.disabled=true;
   $("#skipBtn").disabled=true;
+  $("#graduateBtn").disabled=true;
   btn.textContent="채점 중…";
   try{
     let d;if(S.testMode==="reverse"){const ok=norm(a)===norm(w.term);d={verdict:ok?"correct":"wrong",reason:ok?"철자가 일치해.":`정답은 ${w.term}`,acceptedMeaning:w.term}}
@@ -867,14 +1129,29 @@ $("#gradeBtn").onclick=async()=>{
 사전 표현과 달라도 실제 독해에서 핵심 의미 파악에 지장이 없으면 correct, 방향은 맞지만 오해 가능하면 almost, 다른 뜻이면 wrong.
 JSON 하나만:{"verdict":"correct"|"almost"|"wrong","reason":"한국어 한 문장","acceptedMeaning":"핵심 뜻"}`;d=parseAIJSON(responseText(await openai({model:taskModel("fast"),reasoning:{effort:"none"},text:{verbosity:"low"},max_output_tokens:350,input:prompt},{timeoutMs:30000,retries:1})))}
     }
-    const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);if(ok){S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#nextBtn").classList.remove("hidden");
+    const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);if(ok){rewardRecord("test",w.id);S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#graduateBtn").disabled=false;$("#nextBtn").classList.remove("hidden");
   }catch(e){
     toast(e.message);
     btn.disabled=false;
     $("#skipBtn").disabled=false;
+    $("#graduateBtn").disabled=false;
     btn.textContent="채점하기";
   }
 };
+$("#graduateBtn").onclick=()=>{
+  const w=S.testQueue[S.testIndex];
+  if(!w)return;
+
+  w.testEnabled=false;
+  w.goodCount=Math.max(2,w.goodCount||0);
+  markReviewed(w);
+  save();
+
+  toast(`🎓 ${w.term}: 암기·시험 졸업`);
+  S.testIndex++;
+  renderTest();
+};
+
 $("#skipBtn").onclick=()=>{
   const w=S.testQueue[S.testIndex];
   if(!w)return;
@@ -1000,6 +1277,7 @@ function gradeTransform(answer){
   const ok=norm(answer)===norm(q.correct);
   markReviewed(w);
   if(ok){
+    rewardRecord("transform",`${w.id}:${q.type}`);
     S.transformCorrect++;
     S.meta.transformCorrect=(S.meta.transformCorrect||0)+1;
     w.correct=(w.correct||0)+1;
@@ -1061,8 +1339,6 @@ function renderSources(){
   }).join("");
   $$("[data-source-test]").forEach(b=>b.onclick=()=>{
     S.testSource=decodeURIComponent(b.dataset.sourceTest);
-    S.testScope="all";
-    $$(".test-scope").forEach(x=>x.classList.toggle("active",x.dataset.scope==="all"));
     show("test");
   });
   $$("[data-source-transform]").forEach(b=>b.onclick=()=>{
@@ -1156,7 +1432,7 @@ function renderLibrary(){
   if(S.filter==="star")arr=arr.filter(w=>w.star);if(S.filter==="wrong")arr=arr.filter(w=>(w.wrong||0)>0);if(S.filter==="passage")arr=arr.filter(w=>w.sourceType==="passage");if(S.filter==="test")arr=arr.filter(w=>w.testEnabled!==false);if(S.filter==="graduated")arr=arr.filter(w=>w.testEnabled===false);
   $("#libraryList").innerHTML=arr.length?arr.map(w=>{const enabled=w.testEnabled!==false;return `<div class="word-row"><div class="word-main"><b>${esc(w.term)} ${w.star?"★":""}<span class="test-badge ${enabled?"":"off"}">${enabled?"시험중":"시험졸업"}</span></b><small>${esc(w.meanings.join(", "))}</small><small>${esc(w.sourceLabel||w.sourceType)} · 앎 ${w.goodCount||0}/2 · 넘김 ${w.skipCount||0} · 맞음 ${w.correct||0} / 틀림 ${w.wrong||0}</small></div><div class="word-btns"><button class="test-toggle ${enabled?"":"off"}" data-testtoggle="${w.id}">${enabled?"시험 빼기":"시험 넣기"}</button><button data-star="${w.id}">${w.star?"★":"☆"}</button><button data-del="${w.id}">✕</button></div></div>`}).join(""):`<div class="empty-state"><div class="big-ico">📚</div><h3>단어 없음</h3></div>`;
   $$("[data-star]").forEach(b=>b.onclick=()=>{const w=S.words.find(x=>x.id===b.dataset.star);w.star=!w.star;save();renderLibrary()});
-  $$("[data-testtoggle]").forEach(b=>b.onclick=()=>{const w=S.words.find(x=>x.id===b.dataset.testtoggle);if(w.testEnabled===false){w.testEnabled=true;w.goodCount=0;toast(`${w.term} → 시험에 다시 추가`)}else{w.testEnabled=false;toast(`${w.term} → 시험에서 제외`)}save();renderLibrary()});
+  $$("[data-testtoggle]").forEach(b=>b.onclick=()=>{const w=S.words.find(x=>x.id===b.dataset.testtoggle);if(w.testEnabled===false){w.testEnabled=true;w.goodCount=0;w.dueAt=now();toast(`${w.term} → 시험·암기에 다시 추가`)}else{w.testEnabled=false;toast(`${w.term} → 시험에서 제외`)}save();renderLibrary()});
   $$("[data-del]").forEach(b=>b.onclick=()=>{S.words=S.words.filter(x=>x.id!==b.dataset.del);save();renderLibrary()});
 }
 $("#search").oninput=renderLibrary;$$(".filter").forEach(b=>b.onclick=()=>{$$(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.filter=b.dataset.filter;renderLibrary()});
@@ -1184,11 +1460,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();save();saveTodayCache();renderToday();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();ensureRewardDay();saveReward();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=060",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=063",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

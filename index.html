@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=060">
+  <link rel="stylesheet" href="./styles.css?v=063">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.6 SCORE <span class="build-badge">BUILD 060</span></small>
+    <small>VOCABWALK AI · v0.6.3 <span class="build-badge">BUILD 063</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -40,6 +40,21 @@
       <div class="stat"><b id="weakStat">0</b><span>취약 단어</span></div>
       <div class="stat"><b id="accStat">-</b><span>테스트 정답률</span></div>
     </div>
+
+    <div id="rewardStrip" class="reward-strip">
+      <div class="reward-strip-main">
+        <span id="rewardIcon" class="reward-icon">🎁</span>
+        <div>
+          <b id="rewardTitle">오늘의 봉투</b>
+          <small id="rewardProgressText">공부 기록을 확인 중…</small>
+        </div>
+      </div>
+      <div class="reward-strip-actions">
+        <button id="collectionBtn" type="button" class="reward-link">컬렉션</button>
+        <button id="openRewardBtn" type="button" class="reward-open" disabled>잠김</button>
+      </div>
+    </div>
+    <div id="rewardMiniProgress" class="reward-mini-progress"><span></span></div>
 
     <div class="section-head"><h3>바로 학습</h3></div>
     <div class="action-grid">
@@ -312,15 +327,11 @@ compelling = 설득력 있는"></textarea>
       <button class="test-mode active" data-test="meaning">영 → 한</button>
       <button class="test-mode" data-test="reverse">한 → 영</button>
     </div>
-    <div class="seg">
-      <button class="test-scope active" data-scope="all">전체 시험목록</button>
-      <button class="test-scope" data-scope="star">★ 즐겨찾기만</button>
-    </div>
     <div id="testSourceBanner" class="source-banner hidden">
       <span>현재 범위: <b id="testSourceName"></b></span>
       <button id="clearTestSource" type="button">전체 단어로</button>
     </div>
-    <p class="fine">걷기 암기에서 ‘앎’ 2회가 된 단어는 자동으로 시험에서 빠져. 보관함에서 언제든 다시 넣을 수 있어.</p>
+    <p class="fine">시험졸업한 단어만 제외하고 나머지는 전부 출제돼. ‘다음 시험엔 안 나오게’를 누르면 바로 시험졸업시킬 수 있어.</p>
 
     <div id="testEmpty" class="empty-state hidden">
       <div class="big-ico">🧪</div><h3 id="testEmptyTitle">테스트할 단어가 없어</h3><p id="testEmptyText">보관함에서 시험목록에 넣을 수 있어.</p>
@@ -336,6 +347,7 @@ compelling = 설득력 있는"></textarea>
           <button id="skipBtn" class="big skip-btn">모르겠음 · 넘기기</button>
           <button id="gradeBtn" class="big dark">채점하기</button>
         </div>
+        <button id="graduateBtn" class="graduate-btn" type="button">다음 시험엔 안 나오게</button>
         <div id="resultBox" class="result hidden"></div>
         <button id="nextBtn" class="big hidden">다음 문제</button>
       </div>
@@ -398,7 +410,49 @@ compelling = 설득력 있는"></textarea>
   </div>
 </div>
 
+
+<div id="rewardModal" class="modal-wrap hidden">
+  <div class="modal reward-modal">
+    <span class="eyebrow">DAILY ENVELOPE</span>
+    <button id="closeRewardBtn" class="reward-close" type="button">×</button>
+
+    <div id="rewardOpening" class="reward-opening hidden">
+      <div class="envelope-mark">✉</div>
+      <h2>오늘의 봉투</h2>
+      <p>오늘 공부를 채웠어. 보상은 짧게 보고 다시 공부로 돌아가면 돼.</p>
+      <button id="revealRewardBtn" class="big dark">봉투 열기</button>
+    </div>
+
+    <div id="rewardPieceResult" class="hidden">
+      <span class="eyebrow">COLLECTION PIECE</span>
+      <h2>🧩 그림 조각 획득</h2>
+      <p id="pieceResultText" class="reward-result-copy"></p>
+      <div id="pieceResultPreview" class="collection-board compact-board"></div>
+      <button id="pieceDoneBtn" class="big dark">확인</button>
+    </div>
+
+    <div id="rewardSecretResult" class="hidden">
+      <span class="eyebrow">SECRET CARD</span>
+      <h2>🔐 오늘의 비밀 카드</h2>
+      <div class="secret-card">
+        <b id="secretTitle"></b>
+        <p id="secretBody"></p>
+      </div>
+      <button id="secretDoneBtn" class="big dark">확인</button>
+    </div>
+
+    <div id="collectionView" class="hidden">
+      <span class="eyebrow">COLLECTION</span>
+      <h2 id="collectionTitle">밤하늘 기록</h2>
+      <p id="collectionDesc" class="reward-result-copy"></p>
+      <div id="collectionBoard" class="collection-board"></div>
+      <div id="collectionSeriesTabs" class="collection-tabs"></div>
+      <button id="collectionCloseBtn" class="big">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=060"></script>
+<script src="./app.js?v=063"></script>
 </body>
 </html>

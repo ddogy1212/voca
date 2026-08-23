@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v6-score";
+const CACHE="vocabwalk-v6-3-good2-fix";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=060",
-  "./app.js?v=060",
+  "./styles.css?v=063",
+  "./app.js?v=063",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
