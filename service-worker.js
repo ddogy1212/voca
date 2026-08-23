@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v6-8-photo-accuracy";
+const CACHE="vocabwalk-v6-9-folder-manager";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=068",
-  "./app.js?v=068",
+  "./styles.css?v=069",
+  "./app.js?v=069",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

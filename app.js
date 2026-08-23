@@ -1,11 +1,12 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v2",K_API_STATS="vw_api_stats_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v2",K_API_STATS="vw_api_stats_v1",K_FOLDERS="vw_source_folders_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
 const todayCacheSaved=load(K_TODAY_CACHE,{date:"",queue:[],display:[]});
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
 const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
 const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
 const apiStatsSaved=load(K_API_STATS,{date:"",calls:0,cacheHits:0});
+const folderSaved=load(K_FOLDERS,[]);
 const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
@@ -15,13 +16,14 @@ const S={
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
   gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
+  folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,
   filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
   todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
   todaySeen:load(K_TODAY,[])
 };
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-function save(){localStorage.setItem(K_WORDS,JSON.stringify(S.words));localStorage.setItem(K_META,JSON.stringify(S.meta));localStorage.setItem(K_TODAY,JSON.stringify(S.todaySeen));renderHome()}
+function save(){localStorage.setItem(K_WORDS,JSON.stringify(S.words));localStorage.setItem(K_META,JSON.stringify(S.meta));localStorage.setItem(K_TODAY,JSON.stringify(S.todaySeen));localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders));renderHome()}
 function now(){return Date.now()}function day(n){return n*86400000}
 function norm(s){return String(s||"").toLowerCase().trim().replace(/\s+/g," ")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -81,15 +83,88 @@ function sourceKey(w){
   const s=String(w.sourceLabel||"").trim();
   return s||"출처 미지정";
 }
+function cleanFolderName(name){return String(name||"").trim().replace(/\s+/g," ")}
+function folderNameExists(name,except=null){
+  const n=norm(cleanFolderName(name));
+  return S.folders.some(x=>norm(x)===n&&norm(x)!==norm(except||""));
+}
+function ensureFolder(name){
+  const n=cleanFolderName(name);
+  if(!n||n==="출처 미지정")return;
+  if(!S.folders.some(x=>norm(x)===norm(n)))S.folders.push(n);
+}
+function syncFoldersFromWords(){
+  if(!Array.isArray(S.folders))S.folders=[];
+  S.folders=S.folders.map(cleanFolderName).filter(x=>x&&x!=="출처 미지정");
+  const unique=[];
+  for(const f of S.folders){if(!unique.some(x=>norm(x)===norm(f)))unique.push(f)}
+  S.folders=unique;
+  for(const w of S.words)ensureFolder(w.sourceLabel);
+}
 function sourceGroups(){
+  syncFoldersFromWords();
   const map=new Map();
+  for(const f of S.folders)map.set(f,[]);
+  let hasUnfiled=false;
   for(const w of S.words){
     const k=sourceKey(w);
+    if(k==="출처 미지정")hasUnfiled=true;
     if(!map.has(k))map.set(k,[]);
     map.get(k).push(w);
   }
-  return [...map.entries()].sort((a,b)=>b[1].length-a[1].length);
+  const arr=[...map.entries()].filter(([name])=>name!=="출처 미지정"||hasUnfiled);
+  arr.sort((a,b)=>{
+    if(a[0]==="출처 미지정")return 1;
+    if(b[0]==="출처 미지정")return -1;
+    const ai=S.folders.findIndex(x=>norm(x)===norm(a[0]));
+    const bi=S.folders.findIndex(x=>norm(x)===norm(b[0]));
+    return ai-bi;
+  });
+  return arr;
 }
+function saveFolders(){localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders))}
+function openFolderEdit(mode,oldName=null){
+  S.folderEditMode=mode;S.folderEditOldName=oldName;
+  $("#folderEditTitle").textContent=mode==="rename"?"폴더 이름 바꾸기":"새 폴더 만들기";
+  $("#folderEditSave").textContent=mode==="rename"?"이름 변경":"만들기";
+  $("#folderNameInput").value=mode==="rename"?(oldName||""):"";
+  $("#folderEditModal").classList.remove("hidden");
+  setTimeout(()=>$("#folderNameInput").focus(),50);
+}
+function closeFolderEdit(){$("#folderEditModal").classList.add("hidden")}
+function selectedFolderWordIds(){return $$('[data-folder-word]:checked').map(x=>x.value)}
+function updateFolderSelectedCount(){
+  const selected=selectedFolderWordIds().length;
+  const total=$$('[data-folder-word]').length;
+  $("#folderSelectedCount").textContent=`${selected}개 선택`;
+  $("#folderSelectAll").checked=total>0&&selected===total;
+  $("#folderSelectAll").indeterminate=selected>0&&selected<total;
+  $("#folderMoveBtn").disabled=selected===0;
+  $("#folderDeleteWordsBtn").disabled=selected===0;
+}
+function renderFolderManager(){
+  const name=S.folderManagerName;
+  if(!name)return;
+  const words=S.words.filter(w=>sourceKey(w)===name);
+  $("#folderManagerTitle").textContent=name;
+  const list=$("#folderWordList");
+  list.innerHTML=words.length?words.map(w=>`<label class="folder-word-row">
+    <input class="folder-word-check" data-folder-word type="checkbox" value="${esc(w.id)}">
+    <span class="folder-word-main"><b>${esc(w.term)}</b><small>${esc((w.meanings||[]).join(", "))}</small></span>
+    <span class="folder-word-status">${w.testEnabled===false?"시험졸업":`앎 ${w.goodCount||0}/2`}</span>
+  </label>`).join(""):`<div class="folder-empty-manager">이 폴더에는 단어가 없어.</div>`;
+  const targets=["출처 미지정",...S.folders.filter(f=>norm(f)!==norm(name))];
+  $("#folderMoveTarget").innerHTML=targets.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
+  $$('[data-folder-word]').forEach(x=>x.onchange=updateFolderSelectedCount);
+  $("#folderSelectAll").checked=false;$("#folderSelectAll").indeterminate=false;
+  updateFolderSelectedCount();
+}
+function openFolderManager(name){
+  S.folderManagerName=name;
+  renderFolderManager();
+  $("#folderManagerModal").classList.remove("hidden");
+}
+function closeFolderManager(){S.folderManagerName=null;$("#folderManagerModal").classList.add("hidden")}
 function avg(arr,fn){return arr.length?arr.reduce((s,x)=>s+fn(x),0)/arr.length:0}
 function markReviewed(w){w.lastReviewedAt=now()}
 
@@ -1108,7 +1183,7 @@ function makeWord(x){
   return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,skipCount:0,testEnabled:true};
 }
 function addWord(x){
-  if(!x.term)return false;const old=S.words.find(w=>norm(w.term)===norm(x.term));
+  if(!x.term)return false;ensureFolder(x.sourceLabel);const old=S.words.find(w=>norm(w.term)===norm(x.term));
   if(old){old.meanings=[...new Set([...(old.meanings||[]),...(x.meanings||[])])];old.synonyms=[...new Set([...(old.synonyms||[]),...(x.synonyms||[])])];old.antonyms=[...new Set([...(old.antonyms||[]),...(x.antonyms||[])])];old.derivatives=[...new Set([...(old.derivatives||[]),...(x.derivatives||[])])];if(!old.context)old.context=x.context||"";return false}
   S.words.push(makeWord(x));return true;
 }
@@ -1566,38 +1641,93 @@ $("#transformNextBtn").onclick=()=>{S.transformIndex++;renderTransform()};
 
 /* source decks */
 function renderSources(){
+  syncFoldersFromWords();saveFolders();
   const groups=sourceGroups();
   const box=$("#sourceGroups");
   if(!groups.length){
-    box.innerHTML=`<div class="empty-state"><div class="big-ico">🗂️</div><h3>아직 묶을 단어가 없어</h3><p>사진 추가나 직접 입력에서 출처 이름을 적으면 자동으로 지문별로 묶여.</p></div>`;
+    box.innerHTML=`<div class="empty-state"><div class="big-ico">🗂️</div><h3>아직 폴더가 없어</h3><p>위의 ‘＋ 폴더’를 눌러 직접 만들거나, 사진을 추가하면 출처 이름으로 자동 생성돼.</p></div>`;
     return;
   }
   box.innerHTML=groups.map(([name,words])=>{
-    const ready=Math.round(avg(words,wordReadiness));
+    const ready=words.length?Math.round(avg(words,wordReadiness)):0;
     const risk=words.filter(w=>weakness(w)>=60).length;
     const graduated=words.filter(w=>w.testEnabled===false).length;
     const encoded=encodeURIComponent(name);
+    const special=name==="출처 미지정";
     return `<div class="source-card">
-      <div class="source-card-head">
-        <div><h3>${esc(name)}</h3><p>위험 ${risk}개 · 시험 졸업 ${graduated}개 · 준비도 ${ready}%</p></div>
-        <span class="source-count">${words.length} words</span>
+      <div class="source-card-topline">
+        <div class="source-card-title-wrap"><h3>${esc(name)}</h3><p>${words.length?`위험 ${risk}개 · 시험 졸업 ${graduated}개 · 준비도 ${ready}%`:"빈 폴더"}</p></div>
+        <div class="source-card-menu">
+          ${special?"":`<button data-source-rename="${encoded}">이름</button><button class="danger" data-source-delete="${encoded}">삭제</button>`}
+        </div>
       </div>
+      <span class="source-count">${words.length} words</span>
       <div class="source-mini-progress"><span style="width:${ready}%"></span></div>
-      <div class="source-actions">
-        <button data-source-test="${encoded}">⚡ 이 지문만 시험</button>
-        <button data-source-transform="${encoded}">🔁 이 지문 변형어</button>
+      ${words.length?"":`<div class="empty-folder-note">단어를 옮겨 넣으면 여기에 표시돼.</div>`}
+      <div class="source-actions source-actions-3">
+        <button class="manage-source-btn" data-source-manage="${encoded}">☑ 단어 관리</button>
+        <button data-source-test="${encoded}" ${words.length?"":"disabled"}>⚡ 이 폴더 시험</button>
+        <button data-source-transform="${encoded}" ${words.length?"":"disabled"}>🔁 변형어</button>
       </div>
     </div>`;
   }).join("");
-  $$("[data-source-test]").forEach(b=>b.onclick=()=>{
-    S.testSource=decodeURIComponent(b.dataset.sourceTest);
-    show("test");
+  $$('[data-source-manage]').forEach(b=>b.onclick=()=>openFolderManager(decodeURIComponent(b.dataset.sourceManage)));
+  $$('[data-source-rename]').forEach(b=>b.onclick=()=>openFolderEdit("rename",decodeURIComponent(b.dataset.sourceRename)));
+  $$('[data-source-delete]').forEach(b=>b.onclick=()=>{
+    const name=decodeURIComponent(b.dataset.sourceDelete);
+    const count=S.words.filter(w=>sourceKey(w)===name).length;
+    const msg=count?`‘${name}’ 폴더를 삭제할까?\n안의 ${count}개 단어는 삭제하지 않고 ‘출처 미지정’으로 이동돼.`:`‘${name}’ 빈 폴더를 삭제할까?`;
+    if(!confirm(msg))return;
+    S.words.forEach(w=>{if(sourceKey(w)===name)w.sourceLabel=""});
+    S.folders=S.folders.filter(f=>norm(f)!==norm(name));
+    if(S.testSource===name)S.testSource=null;if(S.transformSource===name)S.transformSource=null;
+    save();saveFolders();renderSources();toast("폴더 삭제 완료");
   });
-  $$("[data-source-transform]").forEach(b=>b.onclick=()=>{
-    S.transformSource=decodeURIComponent(b.dataset.sourceTransform);
-    show("transform");
+  $$('[data-source-test]').forEach(b=>b.onclick=()=>{
+    if(b.disabled)return;S.testSource=decodeURIComponent(b.dataset.sourceTest);show("test");
+  });
+  $$('[data-source-transform]').forEach(b=>b.onclick=()=>{
+    if(b.disabled)return;S.transformSource=decodeURIComponent(b.dataset.sourceTransform);show("transform");
   });
 }
+
+$("#newFolderBtn").onclick=()=>openFolderEdit("create");
+$("#folderEditCancel").onclick=closeFolderEdit;
+$("#folderEditSave").onclick=()=>{
+  const name=cleanFolderName($("#folderNameInput").value);
+  if(!name)return toast("폴더 이름을 입력해줘.");
+  if(name==="출처 미지정")return toast("이 이름은 기본 폴더라 사용할 수 없어.");
+  if(S.folderEditMode==="create"){
+    if(folderNameExists(name))return toast("이미 같은 이름의 폴더가 있어.");
+    S.folders.push(name);saveFolders();closeFolderEdit();renderSources();toast(`📁 ${name} 폴더 생성`);
+  }else{
+    const old=S.folderEditOldName;
+    if(!old)return;
+    if(norm(name)!==norm(old)&&folderNameExists(name,old))return toast("이미 같은 이름의 폴더가 있어.");
+    S.folders=S.folders.map(f=>norm(f)===norm(old)?name:f);
+    S.words.forEach(w=>{if(sourceKey(w)===old)w.sourceLabel=name});
+    if(S.testSource===old)S.testSource=name;if(S.transformSource===old)S.transformSource=name;
+    save();saveFolders();closeFolderEdit();renderSources();toast("폴더 이름 변경 완료");
+  }
+};
+$("#folderNameInput").onkeydown=e=>{if(e.key==="Enter")$("#folderEditSave").click()};
+$("#folderManagerClose").onclick=closeFolderManager;
+$("#folderSelectAll").onchange=e=>{$$('[data-folder-word]').forEach(x=>x.checked=e.target.checked);updateFolderSelectedCount()};
+$("#folderMoveBtn").onclick=()=>{
+  const ids=selectedFolderWordIds();if(!ids.length)return;
+  const target=$("#folderMoveTarget").value;
+  if(target!=="출처 미지정")ensureFolder(target);
+  const set=new Set(ids);
+  S.words.forEach(w=>{if(set.has(w.id))w.sourceLabel=target==="출처 미지정"?"":target});
+  save();saveFolders();
+  const n=ids.length;renderFolderManager();renderSources();toast(`${n}개 단어 이동 완료`);
+};
+$("#folderDeleteWordsBtn").onclick=()=>{
+  const ids=selectedFolderWordIds();if(!ids.length)return;
+  if(!confirm(`선택한 ${ids.length}개 단어를 완전히 삭제할까?\n학습 기록도 함께 삭제돼.`))return;
+  const set=new Set(ids);S.words=S.words.filter(w=>!set.has(w.id));
+  save();renderFolderManager();renderSources();toast(`${ids.length}개 단어 삭제 완료`);
+};
 
 /* study report */
 function editDistance(a,b){
@@ -1712,11 +1842,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=068",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=069",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

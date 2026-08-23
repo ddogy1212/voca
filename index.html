@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=068">
+  <link rel="stylesheet" href="./styles.css?v=069">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.6.8 <span class="build-badge">BUILD 068</span></small>
+    <small>VOCABWALK AI · v0.6.9 <span class="build-badge">BUILD 069</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -233,8 +233,9 @@ compelling = 설득력 있는"></textarea>
     <div class="view-head">
       <button class="back">←</button>
       <div><small>SOURCE DECKS</small><h2>지문별 단어장</h2></div>
+      <button id="newFolderBtn" class="pill folder-new-btn">＋ 폴더</button>
     </div>
-    <p class="fine">사진 추가할 때 적은 출처 이름을 기준으로 자동으로 묶어. 같은 지문·프린트만 따로 시험볼 수 있어.</p>
+    <p class="fine">폴더를 직접 만들고, 기존 단어를 여러 개 선택해 이동·삭제할 수 있어.</p>
     <div id="sourceGroups" class="source-groups"></div>
   </section>
 
@@ -452,7 +453,48 @@ compelling = 설득력 있는"></textarea>
   </div>
 </div>
 
+
+<div id="folderEditModal" class="modal-wrap hidden">
+  <div class="modal folder-edit-modal">
+    <span class="eyebrow">FOLDER</span>
+    <h2 id="folderEditTitle">새 폴더</h2>
+    <input id="folderNameInput" class="folder-name-input" type="text" maxlength="60" placeholder="폴더 이름" autocomplete="off">
+    <div class="folder-modal-actions">
+      <button id="folderEditCancel" class="folder-secondary-btn" type="button">취소</button>
+      <button id="folderEditSave" class="folder-primary-btn" type="button">만들기</button>
+    </div>
+  </div>
+</div>
+
+<div id="folderManagerModal" class="modal-wrap hidden">
+  <div class="modal folder-manager-modal">
+    <div class="folder-manager-head">
+      <div>
+        <span class="eyebrow">WORD MANAGER</span>
+        <h2 id="folderManagerTitle">단어 관리</h2>
+      </div>
+      <button id="folderManagerClose" class="folder-close-btn" type="button">×</button>
+    </div>
+
+    <div class="folder-select-bar">
+      <label class="folder-check-all"><input id="folderSelectAll" type="checkbox"> 전체 선택</label>
+      <b id="folderSelectedCount">0개 선택</b>
+    </div>
+
+    <div id="folderWordList" class="folder-word-list"></div>
+
+    <div class="folder-bulk-panel">
+      <label>선택한 단어 이동</label>
+      <div class="folder-move-row">
+        <select id="folderMoveTarget"></select>
+        <button id="folderMoveBtn" type="button">이동</button>
+      </div>
+      <button id="folderDeleteWordsBtn" class="folder-danger-btn" type="button">선택한 단어 삭제</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=068"></script>
+<script src="./app.js?v=069"></script>
 </body>
 </html>
