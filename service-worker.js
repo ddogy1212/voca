@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v7-2-folder-review";
+const CACHE="vocabwalk-v7-3-folder-edit-fix";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=072",
-  "./app.js?v=072",
+  "./styles.css?v=073",
+  "./app.js?v=073",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

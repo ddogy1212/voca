@@ -16,7 +16,7 @@ const S={
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
   gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
-  folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,
+  folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,folderWordEditId:null,
   filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
   todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
   todaySeen:load(K_TODAY,[])
@@ -156,14 +156,16 @@ function renderFolderManager(){
   const words=S.words.filter(w=>sourceKey(w)===name);
   $("#folderManagerTitle").textContent=name;
   const list=$("#folderWordList");
-  list.innerHTML=words.length?words.map(w=>`<label class="folder-word-row">
+  list.innerHTML=words.length?words.map(w=>`<div class="folder-word-row">
     <input class="folder-word-check" data-folder-word type="checkbox" value="${esc(w.id)}">
-    <span class="folder-word-main"><b>${esc(w.term)}</b><small>${esc((w.meanings||[]).join(", "))}</small></span>
+    <div class="folder-word-main"><b>${esc(w.term)}</b><small>${esc((w.meanings||[]).join(", "))}</small></div>
     <span class="folder-word-status">${w.testEnabled===false?"시험졸업":`앎 ${w.goodCount||0}/2`}</span>
-  </label>`).join(""):`<div class="folder-empty-manager">이 폴더에는 단어가 없어.</div>`;
+    <button class="folder-word-edit-btn" type="button" data-folder-edit-word="${esc(w.id)}">수정</button>
+  </div>`).join(""):`<div class="folder-empty-manager">이 폴더에는 단어가 없어.</div>`;
   const targets=["출처 미지정",...S.folders.filter(f=>norm(f)!==norm(name))];
   $("#folderMoveTarget").innerHTML=targets.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join("");
   $$('[data-folder-word]').forEach(x=>x.onchange=updateFolderSelectedCount);
+  $$('[data-folder-edit-word]').forEach(b=>b.onclick=()=>openFolderWordEdit(b.dataset.folderEditWord));
   $("#folderSelectAll").checked=false;$("#folderSelectAll").indeterminate=false;
   updateFolderSelectedCount();
 }
@@ -173,6 +175,20 @@ function openFolderManager(name){
   $("#folderManagerModal").classList.remove("hidden");
 }
 function closeFolderManager(){S.folderManagerName=null;$("#folderManagerModal").classList.add("hidden")}
+function openFolderWordEdit(id){
+  const w=S.words.find(x=>x.id===id);
+  if(!w)return;
+  S.folderWordEditId=id;
+  $("#folderEditTerm").value=w.term||"";
+  $("#folderEditMeaning").value=(w.meanings||[]).join(" / ");
+  $("#folderWordEditModal").classList.remove("hidden");
+  setTimeout(()=>$("#folderEditTerm").focus(),50);
+}
+function closeFolderWordEdit(){
+  S.folderWordEditId=null;
+  $("#folderWordEditModal").classList.add("hidden");
+}
+
 function avg(arr,fn){return arr.length?arr.reduce((s,x)=>s+fn(x),0)/arr.length:0}
 function markReviewed(w){w.lastReviewedAt=now()}
 
@@ -1773,7 +1789,7 @@ function renderSources(){
     const encoded=encodeURIComponent(name);
     const special=name==="출처 미지정";
     return `<div class="source-card">
-      <div class="source-card-topline">
+      <div class="source-card-topline ${special?"no-menu":""}">
         <div class="source-card-title-wrap"><h3>${esc(name)}</h3><p>${words.length?`위험 ${risk}개 · 시험 졸업 ${graduated}개 · 준비도 ${ready}%`:"빈 폴더"}</p></div>
         <div class="source-card-menu">
           ${special?"":`<button data-source-rename="${encoded}">이름</button><button class="danger" data-source-delete="${encoded}">삭제</button>`}
@@ -1838,6 +1854,37 @@ $("#folderEditSave").onclick=()=>{
 };
 $("#folderNameInput").onkeydown=e=>{if(e.key==="Enter")$("#folderEditSave").click()};
 $("#folderManagerClose").onclick=closeFolderManager;
+$("#folderWordEditCancel").onclick=closeFolderWordEdit;
+$("#folderWordEditSave").onclick=()=>{
+  const w=S.words.find(x=>x.id===S.folderWordEditId);
+  if(!w)return closeFolderWordEdit();
+
+  const term=String($("#folderEditTerm").value||"").trim();
+  const meaningText=String($("#folderEditMeaning").value||"").trim();
+  const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
+
+  if(!term)return toast("영어 단어를 입력해줘.");
+  if(!meanings.length)return toast("한국어 뜻을 하나 이상 입력해줘.");
+
+  const duplicate=S.words.find(x=>x.id!==w.id&&norm(x.term)===norm(term));
+  if(duplicate)return toast("이미 같은 영어 단어가 단어장에 있어.");
+
+  // Only correct the content. Keep all study history/statistics untouched.
+  w.term=term;
+  w.meanings=[...new Set(meanings)];
+
+  save();
+  closeFolderWordEdit();
+  renderFolderManager();
+  renderSources();
+  toast(`✏️ ${term} 수정 완료`);
+};
+$("#folderEditTerm").onkeydown=e=>{
+  if(e.key==="Enter"){
+    e.preventDefault();
+    $("#folderEditMeaning").focus();
+  }
+};
 $("#folderSelectAll").onchange=e=>{$$('[data-folder-word]').forEach(x=>x.checked=e.target.checked);updateFolderSelectedCount()};
 $("#folderMoveBtn").onclick=()=>{
   const ids=selectedFolderWordIds();if(!ids.length)return;
@@ -1975,7 +2022,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=072",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=073",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

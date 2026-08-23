@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=072">
+  <link rel="stylesheet" href="./styles.css?v=073">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.7.2 <span class="build-badge">BUILD 072</span></small>
+    <small>VOCABWALK AI · v0.7.3 <span class="build-badge">BUILD 073</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -514,7 +514,28 @@ compelling = 설득력 있는"></textarea>
   </div>
 </div>
 
+
+<div id="folderWordEditModal" class="modal-wrap hidden">
+  <div class="modal folder-word-edit-modal">
+    <span class="eyebrow">EDIT WORD</span>
+    <h2>단어 수정</h2>
+
+    <label class="folder-edit-label" for="folderEditTerm">영어 단어 / 표현</label>
+    <input id="folderEditTerm" class="folder-edit-input" type="text" autocomplete="off">
+
+    <label class="folder-edit-label" for="folderEditMeaning">한국어 뜻</label>
+    <textarea id="folderEditMeaning" class="folder-edit-textarea" rows="3" placeholder="여러 뜻은 / 로 구분"></textarea>
+
+    <div class="folder-edit-preserve">학습 기록은 그대로 유지돼.</div>
+
+    <div class="folder-modal-actions">
+      <button id="folderWordEditCancel" class="folder-secondary-btn" type="button">취소</button>
+      <button id="folderWordEditSave" class="folder-primary-btn" type="button">저장</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=072"></script>
+<script src="./app.js?v=073"></script>
 </body>
 </html>
