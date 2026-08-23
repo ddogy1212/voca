@@ -734,3 +734,56 @@ button.graduate-btn:disabled{
   font-size:12px;
   font-weight:750;
 }
+
+
+/* BUILD 072 — folder-select walking review */
+.review-range-panel{margin:8px 0 10px}
+.review-range-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.review-range-btn{
+  border:1px solid var(--line);
+  background:#fff;
+  color:#666;
+  border-radius:13px;
+  padding:11px 12px;
+  font-size:11px;
+  font-weight:850;
+}
+.review-range-btn.active{
+  background:#171717;
+  color:#fff;
+  border-color:#171717;
+}
+.review-folder-picker{
+  margin-top:8px;
+  padding:10px;
+  background:#f5f2ed;
+  border:1px solid var(--line);
+  border-radius:13px;
+}
+.review-folder-picker label{
+  display:block;
+  color:var(--muted);
+  font-size:9.5px;
+  font-weight:850;
+  margin-bottom:6px;
+}
+.review-folder-picker select{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #d9d3ca;
+  border-radius:11px;
+  background:#fff;
+  padding:11px;
+  font-size:12px;
+  font-weight:750;
+}
+.source-actions.source-actions-4{
+  grid-template-columns:1fr 1fr;
+}
+@media(max-width:430px){
+  .source-actions.source-actions-4{grid-template-columns:1fr}
+}

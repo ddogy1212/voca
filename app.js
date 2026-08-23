@@ -11,7 +11,7 @@ const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
   mode:"wordlist",photos:[],extracted:null,
-  reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,
+  reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,reviewRangeMode:"all",reviewSource:null,
   testMode:"meaning",testRangeMode:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
@@ -52,6 +52,7 @@ function show(id){
 $$("[data-go]").forEach(b=>b.onclick=()=>{
   if(b.dataset.resetSource==="1"&&b.dataset.go==="test"){S.testRangeMode="all";S.testSource=null;}
   if(b.dataset.resetSource==="1"&&b.dataset.go==="transform")S.transformSource=null;
+  if(b.dataset.resetReview==="1"&&b.dataset.go==="review"){S.reviewRangeMode="all";S.reviewSource=null;S.reviewPreset=null;}
   show(b.dataset.go);
 });
 $$(".back").forEach(b=>b.onclick=()=>show("home"));
@@ -1306,7 +1307,54 @@ function applyMemory(w,g){
   }
   w.dueAt=now()+interval(w,g);save();
 }
+function populateReviewFolderPicker(){
+  syncFoldersFromWords();
+  const groups=sourceGroups();
+  const picker=$("#reviewFolderPicker");
+
+  picker.innerHTML=groups.map(([name,words])=>{
+    const active=words.filter(w=>(w.goodCount||0)<2).length;
+    return `<option value="${esc(name)}">${esc(name)} · ${active}개</option>`;
+  }).join("");
+
+  if(S.reviewSource && groups.some(([name])=>name===S.reviewSource)){
+    picker.value=S.reviewSource;
+  }else if(groups.length){
+    S.reviewSource=groups[0][0];
+    picker.value=S.reviewSource;
+  }else{
+    S.reviewSource=null;
+  }
+}
+function syncReviewRangeUI(){
+  const folderMode=S.reviewRangeMode==="folder";
+  $("#reviewAllBtn").classList.toggle("active",!folderMode);
+  $("#reviewFolderBtn").classList.toggle("active",folderMode);
+  $("#reviewFolderPickerWrap").classList.toggle("hidden",!folderMode);
+  if(folderMode)populateReviewFolderPicker();
+}
+$("#reviewAllBtn").onclick=()=>{
+  S.reviewRangeMode="all";
+  S.reviewSource=null;
+  S.reviewPreset=null;
+  startReview();
+};
+$("#reviewFolderBtn").onclick=()=>{
+  S.reviewRangeMode="folder";
+  S.reviewPreset=null;
+  populateReviewFolderPicker();
+  startReview();
+};
+$("#reviewFolderPicker").onchange=e=>{
+  S.reviewRangeMode="folder";
+  S.reviewSource=e.target.value||null;
+  S.reviewPreset=null;
+  startReview();
+};
+
 function startReview(shuf=false){
+  syncReviewRangeUI();
+
   if(!S.words.length){
     $("#reviewEmpty").classList.remove("hidden");
     $("#reviewArea").classList.add("hidden");
@@ -1315,12 +1363,19 @@ function startReview(shuf=false){
     return;
   }
 
-  const availableForReview=S.words.filter(w=>(w.goodCount||0)<2);
+  let rangeWords=S.words;
+  if(S.reviewRangeMode==="folder"){
+    if(!S.reviewSource)populateReviewFolderPicker();
+    rangeWords=rangeWords.filter(w=>sourceKey(w)===S.reviewSource);
+  }
+
+  const availableForReview=rangeWords.filter(w=>(w.goodCount||0)<2);
+
   if(!availableForReview.length && !(Array.isArray(S.reviewPreset)&&S.reviewPreset.length)){
     $("#reviewEmpty").classList.remove("hidden");
     $("#reviewArea").classList.add("hidden");
-    $("#reviewEmpty h3").textContent="현재 암기할 단어가 없어";
-    $("#reviewEmpty p").textContent="‘앎’ 2회가 된 단어는 암기에서 졸업했어. 보관함에서 ‘시험 넣기’를 누르면 다시 시작할 수 있어.";
+    $("#reviewEmpty h3").textContent=S.reviewRangeMode==="folder"?"이 폴더에 암기할 단어가 없어":"현재 암기할 단어가 없어";
+    $("#reviewEmpty p").textContent="‘앎’ 2회가 된 단어는 암기에서 졸업해. 보관함에서 ‘시험 넣기’를 누르면 다시 시작할 수 있어.";
     return;
   }
 
@@ -1334,14 +1389,12 @@ function startReview(shuf=false){
       .filter(w=>w&&(w.goodCount||0)<2);
     S.reviewPreset=null;
   }else{
-    const reviewable=S.words.filter(w=>(w.goodCount||0)<2);
-    const due=reviewable
+    const due=availableForReview
       .filter(w=>(w.dueAt||0)<=now())
       .sort((a,b)=>weakness(b)-weakness(a));
-    base=due.length?due:[...reviewable].sort((a,b)=>weakness(b)-weakness(a));
+    base=due.length?due:[...availableForReview].sort((a,b)=>weakness(b)-weakness(a));
   }
 
-  // 시험에서 넘긴 단어는 같은 암기 세션 안에서도 1~2회 더 등장.
   const weighted=[];
   for(const w of base){
     weighted.push(w);
@@ -1349,7 +1402,6 @@ function startReview(shuf=false){
     for(let i=0;i<extra;i++)weighted.push(w);
   }
 
-  // 기본 우선순위는 유지하되 사용자가 '섞기'를 누른 경우에만 전체 셔플.
   S.reviewQueue=shuf?shuffle(weighted):weighted;
   S.reviewIndex=0;
   renderReview();
@@ -1730,8 +1782,9 @@ function renderSources(){
       <span class="source-count">${words.length} words</span>
       <div class="source-mini-progress"><span style="width:${ready}%"></span></div>
       ${words.length?"":`<div class="empty-folder-note">단어를 옮겨 넣으면 여기에 표시돼.</div>`}
-      <div class="source-actions source-actions-3">
+      <div class="source-actions source-actions-4">
         <button class="manage-source-btn" data-source-manage="${encoded}">☑ 단어 관리</button>
+        <button data-source-review="${encoded}" ${words.length?"":"disabled"}>🚶 이 폴더 암기</button>
         <button data-source-test="${encoded}" ${words.length?"":"disabled"}>⚡ 이 폴더 시험</button>
         <button data-source-transform="${encoded}" ${words.length?"":"disabled"}>🔁 변형어</button>
       </div>
@@ -1748,6 +1801,13 @@ function renderSources(){
     S.folders=S.folders.filter(f=>norm(f)!==norm(name));
     if(S.testSource===name)S.testSource=null;if(S.transformSource===name)S.transformSource=null;
     save();saveFolders();renderSources();toast("폴더 삭제 완료");
+  });
+  $$('[data-source-review]').forEach(b=>b.onclick=()=>{
+    if(b.disabled)return;
+    S.reviewRangeMode="folder";
+    S.reviewSource=decodeURIComponent(b.dataset.sourceReview);
+    S.reviewPreset=null;
+    show("review");
   });
   $$('[data-source-test]').forEach(b=>b.onclick=()=>{
     if(b.disabled)return;S.testRangeMode="folder";S.testSource=decodeURIComponent(b.dataset.sourceTest);show("test");
@@ -1869,6 +1929,8 @@ $("#quickStudyBtn").onclick=()=>{
     .sort((a,b)=>weakness(b)-weakness(a))
     .slice(0,12);
   if(!pool.length)return toast("복습할 단어가 없어.");
+  S.reviewRangeMode="all";
+  S.reviewSource=null;
   S.reviewPreset=pool.map(w=>w.id);
   toast(`위험 단어 ${pool.length}개로 10분 집중 시작`);
   show("review");
@@ -1913,7 +1975,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=071",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=072",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

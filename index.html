@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=071">
+  <link rel="stylesheet" href="./styles.css?v=072">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.7.1 <span class="build-badge">BUILD 071</span></small>
+    <small>VOCABWALK AI · v0.7.2 <span class="build-badge">BUILD 072</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -57,7 +57,7 @@
 
     <div class="section-head"><h3>바로 학습</h3></div>
     <div class="action-grid">
-      <button class="action primary" data-go="review">
+      <button class="action primary" data-go="review" data-reset-review="1">
         <span class="ico">🚶</span><b>걷기 암기</b><small>큰 글씨 · 발음 · 스와이프</small>
       </button>
       <button class="action" data-go="test" data-reset-source="1">
@@ -286,6 +286,17 @@ compelling = 설득력 있는"></textarea>
       <button id="shuffleBtn" class="pill">섞기</button>
     </div>
 
+    <div class="review-range-panel">
+      <div class="review-range-tabs">
+        <button id="reviewAllBtn" class="review-range-btn active" type="button">🚶 전체 암기</button>
+        <button id="reviewFolderBtn" class="review-range-btn" type="button">📁 폴더 선택</button>
+      </div>
+      <div id="reviewFolderPickerWrap" class="review-folder-picker hidden">
+        <label for="reviewFolderPicker">암기할 폴더</label>
+        <select id="reviewFolderPicker"></select>
+      </div>
+    </div>
+
     <div id="reviewEmpty" class="empty-state hidden"><div class="big-ico">📭</div><h3>외울 단어가 없어</h3><p>하단 ＋에서 사진을 추가해줘.</p></div>
 
     <div id="reviewArea">
@@ -504,6 +515,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=071"></script>
+<script src="./app.js?v=072"></script>
 </body>
 </html>
