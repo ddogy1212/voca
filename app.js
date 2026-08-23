@@ -12,7 +12,7 @@ const S={
   apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,
-  testMode:"meaning",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
+  testMode:"meaning",testRangeMode:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
   gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
@@ -28,7 +28,14 @@ function now(){return Date.now()}function day(n){return n*86400000}
 function norm(s){return String(s||"").toLowerCase().trim().replace(/\s+/g," ")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function uid(){return crypto.randomUUID?.()||Date.now()+"_"+Math.random().toString(36).slice(2)}
-function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
+function shuffle(a){
+  const out=[...a];
+  for(let i=out.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [out[i],out[j]]=[out[j],out[i]];
+  }
+  return out;
+}
 function toast(t){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),2400)}
 function show(id){
   $$(".view").forEach(v=>v.classList.toggle("active",v.id===id));
@@ -43,7 +50,7 @@ function show(id){
   scrollTo({top:0,behavior:"smooth"});
 }
 $$("[data-go]").forEach(b=>b.onclick=()=>{
-  if(b.dataset.resetSource==="1"&&b.dataset.go==="test")S.testSource=null;
+  if(b.dataset.resetSource==="1"&&b.dataset.go==="test"){S.testRangeMode="all";S.testSource=null;}
   if(b.dataset.resetSource==="1"&&b.dataset.go==="transform")S.transformSource=null;
   show(b.dataset.go);
 });
@@ -1370,21 +1377,84 @@ $("#starBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(!w)return;w.s
 let touch=null;$("#flash").addEventListener("touchstart",e=>{const t=e.changedTouches[0];touch={x:t.clientX,y:t.clientY}},{passive:true});$("#flash").addEventListener("touchend",e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y;touch=null;if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)){if(dx<0&&S.reviewIndex<S.reviewQueue.length-1){S.reviewIndex++;renderReview()}else if(dx>0&&S.reviewIndex>0){S.reviewIndex--;renderReview()}}else if(dy<-90&&S.reviewFlipped){applyMemory(S.reviewQueue[S.reviewIndex],"good");S.reviewIndex++;renderReview()}},{passive:true});
 
 /* test */
-$$(".test-mode").forEach(b=>b.onclick=()=>{$$(".test-mode").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.testMode=b.dataset.test;startTest()});
+$$(".test-mode").forEach(b=>b.onclick=()=>{
+  $$(".test-mode").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  S.testMode=b.dataset.test;
+  startTest();
+});
+
+function populateTestFolderPicker(){
+  syncFoldersFromWords();
+  const groups=sourceGroups();
+  const picker=$("#testFolderPicker");
+  picker.innerHTML=groups.map(([name,words])=>{
+    const activeCount=words.filter(w=>w.testEnabled!==false).length;
+    return `<option value="${esc(name)}">${esc(name)} · ${activeCount}개</option>`;
+  }).join("");
+
+  if(S.testSource && groups.some(([name])=>name===S.testSource)){
+    picker.value=S.testSource;
+  }else if(groups.length){
+    S.testSource=groups[0][0];
+    picker.value=S.testSource;
+  }else{
+    S.testSource=null;
+  }
+}
+
+function syncTestRangeUI(){
+  const folderMode=S.testRangeMode==="folder";
+  $("#testAllRandomBtn").classList.toggle("active",!folderMode);
+  $("#testFolderModeBtn").classList.toggle("active",folderMode);
+  $("#testFolderPickerWrap").classList.toggle("hidden",!folderMode);
+
+  // 구형 범위 배너는 새 범위 선택 UI로 대체.
+  $("#testSourceBanner").classList.add("hidden");
+
+  if(folderMode)populateTestFolderPicker();
+}
+
 $("#restartTest").onclick=startTest;
-$("#clearTestSource").onclick=()=>{S.testSource=null;startTest()};
+
+$("#testAllRandomBtn").onclick=()=>{
+  S.testRangeMode="all";
+  S.testSource=null;
+  startTest();
+};
+
+$("#testFolderModeBtn").onclick=()=>{
+  S.testRangeMode="folder";
+  populateTestFolderPicker();
+  startTest();
+};
+
+$("#testFolderPicker").onchange=e=>{
+  S.testRangeMode="folder";
+  S.testSource=e.target.value||null;
+  startTest();
+};
+
+$("#clearTestSource").onclick=()=>{
+  S.testRangeMode="all";
+  S.testSource=null;
+  startTest();
+};
 
 function startTest(){
-  $("#testSourceBanner").classList.toggle("hidden",!S.testSource);
-  $("#testSourceName").textContent=S.testSource||"";
+  syncTestRangeUI();
 
   let eligible=S.words.filter(w=>w.testEnabled!==false);
-  if(S.testSource)eligible=eligible.filter(w=>sourceKey(w)===S.testSource);
+
+  if(S.testRangeMode==="folder"){
+    if(!S.testSource)populateTestFolderPicker();
+    eligible=eligible.filter(w=>sourceKey(w)===S.testSource);
+  }
 
   if(!eligible.length){
     $("#testEmpty").classList.remove("hidden");
     $("#testArea").classList.add("hidden");
-    $("#testEmptyTitle").textContent="테스트 목록이 비어 있어";
+    $("#testEmptyTitle").textContent=S.testRangeMode==="folder"?"이 폴더에 시험 볼 단어가 없어":"테스트 목록이 비어 있어";
     $("#testEmptyText").textContent="시험졸업 단어는 보관함에서 ‘시험 넣기’를 누르면 다시 출제할 수 있어.";
     return;
   }
@@ -1392,12 +1462,8 @@ function startTest(){
   $("#testEmpty").classList.add("hidden");
   $("#testArea").classList.remove("hidden");
 
-  // 시험졸업이 아닌 단어는 전부 한 번씩 본다.
-  // 취약 단어를 앞쪽에 두고, 나머지만 섞는다.
-  const ordered=[...eligible].sort((a,b)=>weakness(b)-weakness(a));
-  const priority=ordered.slice(0,Math.min(8,ordered.length));
-  const rest=shuffle(ordered.slice(priority.length));
-  S.testQueue=[...priority,...rest];
+  // 선택 범위의 시험졸업 제외 단어를 모두, 완전히 랜덤한 순서로 한 번씩 출제.
+  S.testQueue=shuffle(eligible);
   S.testIndex=0;
   S.testCorrect=0;
   renderTest();
@@ -1684,7 +1750,7 @@ function renderSources(){
     save();saveFolders();renderSources();toast("폴더 삭제 완료");
   });
   $$('[data-source-test]').forEach(b=>b.onclick=()=>{
-    if(b.disabled)return;S.testSource=decodeURIComponent(b.dataset.sourceTest);show("test");
+    if(b.disabled)return;S.testRangeMode="folder";S.testSource=decodeURIComponent(b.dataset.sourceTest);show("test");
   });
   $$('[data-source-transform]').forEach(b=>b.onclick=()=>{
     if(b.disabled)return;S.transformSource=decodeURIComponent(b.dataset.sourceTransform);show("transform");
@@ -1827,7 +1893,8 @@ $("#sampleBtn").onclick=()=>{const a=[{term:"reinforce",meanings:["강화하다"
 /* PWA install */
 let deferredPrompt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e});
-$("#installBtn").onclick=()=>{const ua=navigator.userAgent;let guide;if(/iPhone|iPad|iPod/i.test(ua))guide="iPhone/iPad: 브라우저의 <b>공유 버튼</b> → <b>홈 화면에 추가</b> → 추가.";else guide="Android: 브라우저 메뉴에서 <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 눌러. 설치 버튼이 지원되면 아래 버튼도 사용할 수 있어.";$("#installGuide").innerHTML=guide;$("#nativeInstallBtn").classList.toggle("hidden",!deferredPrompt);$("#installModal").classList.remove("hidden")};
+const installBtn=$("#installBtn");
+if(installBtn)installBtn.onclick=()=>{const ua=navigator.userAgent;let guide;if(/iPhone|iPad|iPod/i.test(ua))guide="iPhone/iPad: 브라우저의 <b>공유 버튼</b> → <b>홈 화면에 추가</b> → 추가.";else guide="Android: 브라우저 메뉴에서 <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 눌러. 설치 버튼이 지원되면 아래 버튼도 사용할 수 있어.";$("#installGuide").innerHTML=guide;$("#nativeInstallBtn").classList.toggle("hidden",!deferredPrompt);$("#installModal").classList.remove("hidden")};
 $("#closeInstallBtn").onclick=()=>$("#installModal").classList.add("hidden");
 $("#nativeInstallBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$("#installModal").classList.add("hidden")};
 
@@ -1846,7 +1913,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=069",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=071",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

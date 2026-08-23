@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v6-9-folder-manager";
+const CACHE="vocabwalk-v7-1-random-folder-test";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=069",
-  "./app.js?v=069",
+  "./styles.css?v=071",
+  "./app.js?v=071",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

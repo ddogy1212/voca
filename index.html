@@ -10,16 +10,15 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=069">
+  <link rel="stylesheet" href="./styles.css?v=071">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.6.9 <span class="build-badge">BUILD 069</span></small>
+    <small>VOCABWALK AI · v0.7.1 <span class="build-badge">BUILD 071</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
-    <button id="installBtn" class="pill">📲 설치</button>
     <button id="apiBtn" class="pill"><span id="apiDot" class="status-dot"></span>AI</button>
   </div>
 </header>
@@ -328,11 +327,21 @@ compelling = 설득력 있는"></textarea>
       <button class="test-mode active" data-test="meaning">영 → 한</button>
       <button class="test-mode" data-test="reverse">한 → 영</button>
     </div>
+    <div class="test-range-panel">
+      <div class="test-range-tabs">
+        <button id="testAllRandomBtn" class="test-range-btn active" type="button">🎲 전체 랜덤</button>
+        <button id="testFolderModeBtn" class="test-range-btn" type="button">📁 폴더 선택</button>
+      </div>
+      <div id="testFolderPickerWrap" class="test-folder-picker hidden">
+        <label for="testFolderPicker">시험 볼 폴더</label>
+        <select id="testFolderPicker"></select>
+      </div>
+    </div>
     <div id="testSourceBanner" class="source-banner hidden">
       <span>현재 범위: <b id="testSourceName"></b></span>
       <button id="clearTestSource" type="button">전체 단어로</button>
     </div>
-    <p class="fine">시험졸업한 단어만 제외하고 나머지는 전부 출제돼. ‘다음 시험엔 안 나오게’를 누르면 바로 시험졸업시킬 수 있어.</p>
+    <p class="fine">시험졸업한 단어만 제외하고 선택한 범위의 단어를 전부 랜덤 순서로 출제해. ‘다음 시험부터 제외’를 누르면 바로 시험졸업시킬 수 있어.</p>
 
     <div id="testEmpty" class="empty-state hidden">
       <div class="big-ico">🧪</div><h3 id="testEmptyTitle">테스트할 단어가 없어</h3><p id="testEmptyText">보관함에서 시험목록에 넣을 수 있어.</p>
@@ -495,6 +504,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=069"></script>
+<script src="./app.js?v=071"></script>
 </body>
 </html>
