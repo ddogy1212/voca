@@ -185,19 +185,19 @@ function renderRewardStrip(){
     $("#rewardIcon").textContent="✓";
     $("#rewardTitle").textContent="오늘의 봉투 받음";
     $("#rewardProgressText").textContent="내일 다시 하나 열 수 있어.";
-    $("#openRewardBtn").textContent="완료";
+    $("#openRewardBtn").textContent="✓ 완료";
     $("#openRewardBtn").disabled=true;
   }else if(ready){
     $("#rewardIcon").textContent="✉️";
     $("#rewardTitle").textContent="오늘의 봉투 · 열 수 있음";
     $("#rewardProgressText").textContent="오늘 학습 조건을 모두 채웠어.";
-    $("#openRewardBtn").textContent="열기";
+    $("#openRewardBtn").textContent="✉ 열기";
     $("#openRewardBtn").disabled=false;
   }else{
     $("#rewardIcon").textContent="🎁";
     $("#rewardTitle").textContent="오늘의 봉투";
     $("#rewardProgressText").textContent=chunks.length?chunks.join(" · "):"단어를 추가하면 시작돼.";
-    $("#openRewardBtn").textContent="잠김";
+    $("#openRewardBtn").textContent="🔒 잠김";
     $("#openRewardBtn").disabled=true;
   }
 }
@@ -246,6 +246,7 @@ $("#openRewardBtn").onclick=()=>{
   showRewardPane("rewardOpening");
   $("#rewardModal").classList.remove("hidden");
 };
+$("#collectionBtn").textContent="🧩 컬렉션";
 $("#collectionBtn").onclick=()=>{
   renderCollectionView(currentRewardSeriesIndex());
   showRewardPane("collectionView");
@@ -404,9 +405,74 @@ function responseText(d){
   for(const out of(d.output||[]))if(out.type==="message")for(const c of(out.content||[]))if(c.type==="output_text")text+=c.text||"";
   return text||d.output_text||"";
 }
+function cleanAIJSONText(t){
+  return String(t||"")
+    .trim()
+    .replace(/^```json\s*/i,"")
+    .replace(/^```\s*/,"")
+    .replace(/\s*```$/,"")
+    .replace(/[“”]/g,'"')
+    .replace(/[‘’]/g,"'");
+}
+function tryParseAIJSON(t){
+  const s=cleanAIJSONText(t);
+  try{return JSON.parse(s)}catch(e1){
+    const a=s.indexOf('{'), b=s.lastIndexOf('}');
+    if(a>=0&&b>a){
+      const sliced=s.slice(a,b+1);
+      try{return JSON.parse(sliced)}catch(e2){
+        return null;
+      }
+    }
+    return null;
+  }
+}
+function normalizeExtractedData(d){
+  if(!d||typeof d!=="object")d={};
+  if(!Array.isArray(d.items))d.items=[];
+  if(!Array.isArray(d.extraItems))d.extraItems=[];
+  if(!Array.isArray(d.warnings))d.warnings=[];
+  if(!Array.isArray(d.corrections))d.corrections=[];
+  d.title=String(d.title||"");
+  d.summary=String(d.summary||"");
+  const normItem=(x,sourceTypeDefault)=>({
+    term:String(x?.term||"").trim(),
+    meanings:Array.isArray(x?.meanings)?x.meanings.map(v=>String(v||'').trim()).filter(Boolean):[],
+    partOfSpeech:String(x?.partOfSpeech||""),
+    context:String(x?.context||""),
+    synonyms:Array.isArray(x?.synonyms)?x.synonyms.map(v=>String(v||'').trim()).filter(Boolean).slice(0,2):[],
+    antonyms:Array.isArray(x?.antonyms)?x.antonyms.map(v=>String(v||'').trim()).filter(Boolean).slice(0,2):[],
+    derivatives:Array.isArray(x?.derivatives)?x.derivatives.map(v=>String(v||'').trim()).filter(Boolean).slice(0,3):[],
+    importance:Number(x?.importance||1),
+    sourceType:String(x?.sourceType||sourceTypeDefault),
+    sourceLabel:String(x?.sourceLabel||$("#sourceLabel")?.value.trim()||"")
+  });
+  d.items=d.items.map(x=>normItem(x,S.mode==="passage"?"passage":"wordlist")).filter(x=>x.term&&x.meanings.length);
+  d.extraItems=d.extraItems.map(x=>normItem(x,'suggested')).filter(x=>x.term&&x.meanings.length).slice(0,12);
+  d.warnings=d.warnings.map(v=>String(v||'').trim()).filter(Boolean).slice(0,20);
+  d.corrections=d.corrections.map(x=>({before:String(x?.before||''),after:String(x?.after||''),reason:String(x?.reason||'')})).filter(x=>x.before||x.after||x.reason).slice(0,20);
+  return d;
+}
+async function parseAIJSONOrRepair(t,kind="generic"){
+  const parsed=tryParseAIJSON(t);
+  if(parsed)return normalizeExtractedData(parsed);
+  if(!needApi())throw Error("AI 결과 형식을 읽지 못했어. 다시 시도해줘.");
+  const prompt=`아래 텍스트는 JSON이어야 했는데 약간 망가졌다. 내용을 최대한 유지하면서 유효한 JSON 하나만 복구해라. 설명 금지.\n종류:${kind}\n텍스트:\n${cleanAIJSONText(t)}`;
+  const repaired=responseText(await openai({
+    model:taskModel("fast"),
+    reasoning:{effort:"none"},
+    text:{verbosity:"low"},
+    max_output_tokens:4200,
+    input:prompt
+  },{timeoutMs:25000,retries:0}));
+  const parsed2=tryParseAIJSON(repaired);
+  if(parsed2)return normalizeExtractedData(parsed2);
+  throw Error("AI 결과 형식이 조금 망가졌어. 다시 시도해줘.");
+}
 function parseAIJSON(t){
-  let s=String(t||"").trim().replace(/^```json\s*/i,"").replace(/^```\s*/,"").replace(/\s*```$/,"");
-  try{return JSON.parse(s)}catch{const a=s.indexOf("{"),b=s.lastIndexOf("}");if(a>=0&&b>a)return JSON.parse(s.slice(a,b+1));throw Error("AI 결과 형식을 읽지 못했어. 다시 시도해줘.")}
+  const parsed=tryParseAIJSON(t);
+  if(parsed)return parsed;
+  throw Error("AI 결과 형식을 읽지 못했어. 다시 시도해줘.");
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 function taskModel(task){
@@ -830,15 +896,20 @@ function extractionPrompt(){
 첨부된 여러 장의 원본 사진을 페이지 순서대로 직접 시각적으로 읽어라. 사이트 OCR 결과는 없다.
 각 사진의 철자와 문맥을 두 번 대조하고, 확신이 낮은 철자는 추측하지 말고 warnings에 남겨라.
 지문 이해와 시험 변형에 중요한 어휘만 골라라. 쉬운 기능어는 제외하고 원문 문장을 길게 복사하지 마라.
+각 item의 synonyms/antonyms/derivatives는 꼭 필요할 때만 0~2개 이내로 아주 짧게 넣어라.
+extraItems는 정말 중요한 추가어만 최대 8개 이내로 넣어라.
 출처 라벨: ${source||"(없음)"}
 JSON 하나만:
-{"title":"자료 제목","summary":"전체 지문 핵심 한국어 1~2문장","items":[{"term":"실제 등장 표제어","meanings":["문맥 핵심 뜻"],"partOfSpeech":"품사","context":"문맥 역할","synonyms":["유용한 동의어"],"antonyms":["필요한 반의어"],"derivatives":["중요 파생형"],"importance":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"변형 대비 추가어","meanings":["뜻"],"partOfSpeech":"","context":"원 단어와 관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[]}`;
+{"title":"자료 제목","summary":"전체 지문 핵심 한국어 1~2문장","items":[{"term":"실제 등장 표제어","meanings":["문맥 핵심 뜻"],"partOfSpeech":"품사","context":"문맥 역할","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"변형 대비 추가어","meanings":["뜻"],"partOfSpeech":"","context":"원 단어와 관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[],"corrections":[],"verificationNote":""}`;
   return `너는 영어 단어장 사진을 매우 보수적으로 읽는 어휘 추출기다.
 첨부된 여러 장의 원본 사진을 직접 시각적으로 읽어 영어 단어/표현과 같은 행/항목의 한국어 뜻을 대응시켜라. 사이트 OCR 결과는 없다.
 각 철자와 뜻의 행 대응을 두 번 대조해라. 확신이 낮으면 추측하지 말고 warnings에 남기거나 제외해라.
+실제 사진에 있는 단어만 items에 넣어라.
+synonyms/antonyms/derivatives는 선택 사항이며, 매우 확실한 경우에만 0~2개 정도만 넣어라. 비워도 된다.
+extraItems는 선택 사항이며 최대 8개 이내로만 넣어라.
 출처 라벨: ${source||"(없음)"}
 JSON 하나만:
-{"title":"사진 단어장","summary":"","items":[{"term":"사진 속 영어","meanings":["사진의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":["확실한 핵심 동의어만"],"antonyms":["확실한 반의어만"],"derivatives":["중요 파생형만"],"importance":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"같이 알면 좋은 추가어","meanings":["뜻"],"partOfSpeech":"","context":"관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[]}`;
+{"title":"사진 단어장","summary":"","items":[{"term":"사진 속 영어","meanings":["사진의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"같이 알면 좋은 추가어","meanings":["뜻"],"partOfSpeech":"","context":"관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[],"corrections":[],"verificationNote":""}`;
 }
 
 function onePassPhotoPrompt(){
@@ -853,7 +924,7 @@ function onePassPhotoPrompt(){
 - 명백한 오독은 수정 또는 제외한다.
 - corrections 배열과 verificationNote를 추가한다.
 - 검색을 사용했으면 verificationNote="원본 재검토 + 의심 항목 웹 검증 완료", 검색이 필요 없었으면 verificationNote="원본 재검토 완료 · 의심 항목 없음".
-- JSON 이외의 텍스트는 출력하지 마라.`;
+- JSON 이외의 텍스트는 출력하지 마라. JSON은 짧고 단정하게 유지해라.`;
 }
 $("#analyzeBtn").onclick=async()=>{
   if(!S.photos.length||!needApi())return;
@@ -893,16 +964,59 @@ $("#analyzeBtn").onclick=async()=>{
 
     setProgress("analysis",93,"결과 정리 중","인식 결과를 정리하고 있어.");
     const usedSearch=(result.output||[]).some(x=>x.type==="web_search_call");
-    S.extracted=parseAIJSON(responseText(result));
-    S.extracted.webVerified=true;
-    S.extracted.usedWebSearch=usedSearch;
+    try{
+      S.extracted=await parseAIJSONOrRepair(responseText(result),"photo_extract");
+    }catch(parseErr){
+      // 1차 결과 JSON이 망가지면, 사진을 1장씩 나눠 더 안정적으로 다시 읽는다.
+      const merged={title:S.mode==="passage"?"자료 제목":"사진 단어장",summary:"",items:[],extraItems:[],warnings:["초기 응답 JSON이 깨져서 안정 모드로 다시 읽었어."],corrections:[],verificationNote:"안정 모드 재시도 완료"};
+      for(let i=0;i<S.photos.length;i++){
+        setProgress("analysis",35+Math.round((i/Math.max(1,S.photos.length))*50),"안정 모드 재시도",`${i+1}/${S.photos.length}번째 사진 다시 읽는 중`);
+        const photo=S.photos[i];
+        const single=await openai({
+          model:taskModel("photo"),
+          reasoning:{effort:"none"},
+          text:{verbosity:"low"},
+          max_output_tokens:2200,
+          input:[{role:"user",content:[
+            {type:"input_text",text:extractionPrompt()+`
+이 호출은 ${i+1}번째 사진 한 장만 처리한다. JSON만 출력해라.`},
+            {type:"input_image",image_url:photo.preparedUrl||photo.dataUrl||photo.url,detail:"high"}
+          ]}]
+        },{timeoutMs:45000,retries:0});
+        const d=await parseAIJSONOrRepair(responseText(single),"photo_single");
+        if(!merged.summary && d.summary)merged.summary=d.summary;
+        merged.items.push(...(d.items||[]));
+        merged.extraItems.push(...(d.extraItems||[]));
+        merged.warnings.push(...(d.warnings||[]));
+        merged.corrections.push(...(d.corrections||[]));
+      }
+      const seen=new Set();
+      merged.items=merged.items.filter(x=>{
+        const k=norm(x.term);
+        if(!k||seen.has(k))return false;
+        seen.add(k);
+        return true;
+      });
+      const seenExtra=new Set();
+      merged.extraItems=merged.extraItems.filter(x=>{
+        const k=norm(x.term);
+        if(!k||seen.has(k)||seenExtra.has(k))return false;
+        seenExtra.add(k);
+        return true;
+      }).slice(0,12);
+      S.extracted=normalizeExtractedData(merged);
+      S.extracted.webVerified=false;
+      S.extracted.usedWebSearch=false;
+    }
+    S.extracted.webVerified=usedSearch||!!S.extracted.webVerified;
+    S.extracted.usedWebSearch=usedSearch||!!S.extracted.usedWebSearch;
     if(!S.extracted.verificationNote){
-      S.extracted.verificationNote=usedSearch?"원본 재검토 + 의심 항목 웹 검증 완료":"원본 재검토 완료 · 의심 항목 없음";
+      S.extracted.verificationNote=S.extracted.webVerified?"원본 재검토 + 의심 항목 웹 검증 완료":"원본 재검토 완료 · 의심 항목 없음";
     }
     putPhotoCache(S.extracted);
     renderExtract();bindPickEditors();
 
-    setProgress("analysis",100,"완료",usedSearch?"의심 항목만 웹 검색해서 검증했어.":"웹 검색 없이 원본 자체 검토로 끝냈어.");
+    setProgress("analysis",100,"완료",S.extracted.webVerified?"의심 항목만 웹 검색해서 검증했어.":"필요하면 안정 모드로 나눠 읽어서 완료했어.");
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
     $("#extractPanel").classList.remove("hidden");
@@ -1605,7 +1719,7 @@ migrate();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveA
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=065",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=067",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

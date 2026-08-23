@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v6-5-api-saver";
+const CACHE="vocabwalk-v6-7-photo-json-fix";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=065",
-  "./app.js?v=065",
+  "./styles.css?v=067",
+  "./app.js?v=067",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
