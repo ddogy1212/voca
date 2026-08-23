@@ -1,5 +1,5 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v1",K_API_STATS="vw_api_stats_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v2",K_API_STATS="vw_api_stats_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
 const todayCacheSaved=load(K_TODAY_CACHE,{date:"",queue:[],display:[]});
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
@@ -444,6 +444,8 @@ function normalizeExtractedData(d){
     antonyms:Array.isArray(x?.antonyms)?x.antonyms.map(v=>String(v||'').trim()).filter(Boolean).slice(0,2):[],
     derivatives:Array.isArray(x?.derivatives)?x.derivatives.map(v=>String(v||'').trim()).filter(Boolean).slice(0,3):[],
     importance:Number(x?.importance||1),
+    confidence:Number.isFinite(Number(x?.confidence))?Math.max(0,Math.min(1,Number(x.confidence))):1,
+    page:Number.isFinite(Number(x?.page))?Number(x.page):0,
     sourceType:String(x?.sourceType||sourceTypeDefault),
     sourceLabel:String(x?.sourceLabel||$("#sourceLabel")?.value.trim()||"")
   });
@@ -837,13 +839,13 @@ async function prepareImageForHighDetail(file){
   }
 
   try{
-    // API 절약: 휴대폰 원본을 그대로 보내지 않고
-    // 단어 판독에 필요한 수준으로만 축소한다.
+    // 손글씨 정확도 우선: 기존 1800px보다 해상도를 높이고,
+    // 연필 글씨가 흐려지지 않도록 약하게 대비를 보정한다.
     const pixels=decoded.width*decoded.height;
     const scale=Math.min(
       1,
-      1800/Math.max(decoded.width,decoded.height),
-      Math.sqrt(1800000/Math.max(1,pixels))
+      2800/Math.max(decoded.width,decoded.height),
+      Math.sqrt(5000000/Math.max(1,pixels))
     );
 
     const c=document.createElement("canvas");
@@ -851,11 +853,15 @@ async function prepareImageForHighDetail(file){
     c.height=Math.max(1,Math.round(decoded.height*scale));
 
     const ctx=c.getContext("2d",{alpha:false});
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality="high";
     ctx.fillStyle="#fff";
     ctx.fillRect(0,0,c.width,c.height);
+    try{ctx.filter="contrast(1.14) brightness(1.025)"}catch{}
     ctx.drawImage(decoded.source,0,0,c.width,c.height);
+    try{ctx.filter="none"}catch{}
 
-    return await canvasToData(c,.88);
+    return await canvasToData(c,.94);
   }finally{
     decoded.close?.();
   }
@@ -893,51 +899,54 @@ function imageContent(prefix=""){
 function extractionPrompt(){
   const source=$("#sourceLabel").value.trim();
   if(S.mode==="passage")return `너는 한국 고등학교 영어 내신/수능 독해 어휘 코치다.
-첨부된 여러 장의 원본 사진을 페이지 순서대로 직접 시각적으로 읽어라. 사이트 OCR 결과는 없다.
-각 사진의 철자와 문맥을 두 번 대조하고, 확신이 낮은 철자는 추측하지 말고 warnings에 남겨라.
-지문 이해와 시험 변형에 중요한 어휘만 골라라. 쉬운 기능어는 제외하고 원문 문장을 길게 복사하지 마라.
-각 item의 synonyms/antonyms/derivatives는 꼭 필요할 때만 0~2개 이내로 아주 짧게 넣어라.
-extraItems는 정말 중요한 추가어만 최대 8개 이내로 넣어라.
-출처 라벨: ${source||"(없음)"}
-JSON 하나만:
-{"title":"자료 제목","summary":"전체 지문 핵심 한국어 1~2문장","items":[{"term":"실제 등장 표제어","meanings":["문맥 핵심 뜻"],"partOfSpeech":"품사","context":"문맥 역할","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"변형 대비 추가어","meanings":["뜻"],"partOfSpeech":"","context":"원 단어와 관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[],"corrections":[],"verificationNote":""}`;
-  return `너는 영어 단어장 사진을 매우 보수적으로 읽는 어휘 추출기다.
-첨부된 여러 장의 원본 사진을 직접 시각적으로 읽어 영어 단어/표현과 같은 행/항목의 한국어 뜻을 대응시켜라. 사이트 OCR 결과는 없다.
-각 철자와 뜻의 행 대응을 두 번 대조해라. 확신이 낮으면 추측하지 말고 warnings에 남기거나 제외해라.
-실제 사진에 있는 단어만 items에 넣어라.
-synonyms/antonyms/derivatives는 선택 사항이며, 매우 확실한 경우에만 0~2개 정도만 넣어라. 비워도 된다.
-extraItems는 선택 사항이며 최대 8개 이내로만 넣어라.
-출처 라벨: ${source||"(없음)"}
-JSON 하나만:
-{"title":"사진 단어장","summary":"","items":[{"term":"사진 속 영어","meanings":["사진의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[{"term":"같이 알면 좋은 추가어","meanings":["뜻"],"partOfSpeech":"","context":"관계","synonyms":[],"antonyms":[],"derivatives":[],"importance":2,"sourceType":"suggested","sourceLabel":${JSON.stringify(source)}}],"warnings":[],"corrections":[],"verificationNote":""}`;
+원본 사진을 직접 읽고, 철자와 문맥을 보수적으로 확인한다. 사이트 OCR 결과는 없다.
+추측 금지. 확신이 낮은 것은 warnings에 남긴다.
+출처:${source||"(없음)"}
+JSON만 출력:
+{"title":"자료 제목","summary":"핵심 한국어 1~2문장","items":[{"term":"표제어","meanings":["문맥 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"원본 사진 대조 완료"}`;
+  return `너는 손글씨 영어 단어장을 정확히 옮기는 전사기다. 사이트 OCR은 없다.
+왼쪽 영어와 오른쪽 한국어를 반드시 같은 가로줄끼리 대응한다.
+위에서 아래 순서대로 한 줄씩 읽는다.
+영어는 단어뿐 아니라 account for, take ~ into account 같은 표현도 한 항목으로 보존한다.
+보이는 철자를 멋대로 사전형/더 그럴듯한 단어로 고치지 않는다. 확신이 낮으면 confidence를 낮추고 warnings에 적는다.
+한국어 뜻도 같은 줄에 실제로 적힌 뜻만 넣는다.
+별표, 번호, 여백, 다른 페이지의 글씨는 단어로 인식하지 않는다.
+동의어·반의어·파생어·추가 추천어는 이번 인식 단계에서는 만들지 않는다. 정확한 전사가 최우선이다.
+출처:${source||"(없음)"}
+JSON만 출력:
+{"title":"사진 단어장","summary":"","items":[{"term":"사진에 적힌 영어/표현","meanings":["같은 줄의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"원본 사진 대조 완료"}`;
+}
+function singlePhotoAccuracyPrompt(pageNo){
+  return `${extractionPrompt()}
+
+이 요청에는 ${pageNo}번째 사진 한 장만 있다.
+정확도 절차:
+1. 먼저 왼쪽 영어 열만 위→아래로 읽어 행 수를 파악한다.
+2. 그 다음 오른쪽 한국어 열만 위→아래로 읽는다.
+3. 마지막에 같은 수평선/같은 행끼리 다시 대조해 term과 meaning을 묶는다.
+4. 철자가 흐리면 문맥으로 상상해서 채우지 말고 confidence를 0.75 이하로 낮춘다.
+5. 한 행을 건너뛰거나 두 행을 합치지 않았는지 마지막에 다시 검사한다.
+6. page 필드는 모든 item에 ${pageNo}를 넣는다.
+JSON 이외에는 아무것도 출력하지 마라.`;
 }
 
 function onePassPhotoPrompt(){
-  const base=extractionPrompt();
-  return `${base}
-
-비용 절약 검증 규칙:
-- 사진을 먼저 직접 읽고 철자와 행 대응을 두 번 자체 검토한다.
-- 철자/뜻 대응이 명확한 항목은 웹 검색을 하지 않는다.
-- 철자가 이상하거나 존재 여부가 의심되거나, 영어-한국어 행 대응이 애매한 항목이 하나라도 있으면 그 의심 항목들만 묶어서 웹 검색 도구로 확인한다.
-- 검색 결과만 믿고 사진과 다른 단어로 바꾸지 마라.
-- 명백한 오독은 수정 또는 제외한다.
-- corrections 배열과 verificationNote를 추가한다.
-- 검색을 사용했으면 verificationNote="원본 재검토 + 의심 항목 웹 검증 완료", 검색이 필요 없었으면 verificationNote="원본 재검토 완료 · 의심 항목 없음".
-- JSON 이외의 텍스트는 출력하지 마라. JSON은 짧고 단정하게 유지해라.`;
+  return `${extractionPrompt()}
+원본 사진 자체 대조가 우선이다. 웹 검색은 저장 조건이 아니며, 철자 확인이 정말 필요한 경우에만 보조적으로 쓴다. JSON만 출력한다.`;
 }
+
 $("#analyzeBtn").onclick=async()=>{
   if(!S.photos.length||!needApi())return;
   const btn=$("#analyzeBtn");
   btn.disabled=true;
   $("#extractPanel").classList.add("hidden");
-  startProgress("analysis","사진 확인 중","같은 사진을 이미 분석했는지 먼저 확인하고 있어.",3,91);
+  startProgress("analysis","사진 확인 중","정확도 우선 모드로 페이지별 인식을 준비하고 있어.",3,90);
   try{
     const cached=getPhotoCache();
     if(cached){
       S.extracted=cached;
       renderExtract();bindPickEditors();
-      setProgress("analysis",100,"캐시에서 완료","같은 사진 분석 결과를 재사용해서 API를 쓰지 않았어.");
+      setProgress("analysis",100,"캐시에서 완료","이 버전에서 이미 분석한 같은 사진 결과를 재사용했어.");
       stopProgress("analysis");
       setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
       $("#extractPanel").classList.remove("hidden");
@@ -947,78 +956,62 @@ $("#analyzeBtn").onclick=async()=>{
 
     await prepareSelectedPhotosForApi();
     const total=S.photos.reduce((a,p)=>a+(p.preparedBytes||p.size||0),0);
-    if(total>14*1024*1024)throw Error("최적화 후에도 사진 용량이 커. 4장씩 나눠서 해줘.");
+    if(total>24*1024*1024)throw Error("고화질 준비 후 사진 용량이 커. 4장씩 나눠서 해줘.");
 
-    setProgress("analysis",27,"AI로 전송 중",`${S.photos.length}장 · 필요한 경우에만 웹 검증해.`);
-    const result=await openai({
-      model:taskModel("photo"),
-      reasoning:{effort:"none"},
-      text:{verbosity:"low"},
-      max_output_tokens:4600,
-      max_tool_calls:1,
-      parallel_tool_calls:false,
-      tools:[{type:"web_search",search_context_size:"low"}],
-      tool_choice:"auto",
-      input:[{role:"user",content:[{type:"input_text",text:onePassPhotoPrompt()},...imageContent()]}]
-    },{prefix:"analysis",timeoutMs:75000,retries:1});
+    const merged={
+      title:S.mode==="passage"?"자료 제목":"사진 단어장",
+      summary:"",items:[],extraItems:[],warnings:[],corrections:[],
+      verificationNote:"원본 사진 페이지별 대조 완료",
+      webVerified:false,usedWebSearch:false
+    };
 
-    setProgress("analysis",93,"결과 정리 중","인식 결과를 정리하고 있어.");
-    const usedSearch=(result.output||[]).some(x=>x.type==="web_search_call");
-    try{
-      S.extracted=await parseAIJSONOrRepair(responseText(result),"photo_extract");
-    }catch(parseErr){
-      // 1차 결과 JSON이 망가지면, 사진을 1장씩 나눠 더 안정적으로 다시 읽는다.
-      const merged={title:S.mode==="passage"?"자료 제목":"사진 단어장",summary:"",items:[],extraItems:[],warnings:["초기 응답 JSON이 깨져서 안정 모드로 다시 읽었어."],corrections:[],verificationNote:"안정 모드 재시도 완료"};
-      for(let i=0;i<S.photos.length;i++){
-        setProgress("analysis",35+Math.round((i/Math.max(1,S.photos.length))*50),"안정 모드 재시도",`${i+1}/${S.photos.length}번째 사진 다시 읽는 중`);
-        const photo=S.photos[i];
-        const single=await openai({
-          model:taskModel("photo"),
-          reasoning:{effort:"none"},
-          text:{verbosity:"low"},
-          max_output_tokens:2200,
-          input:[{role:"user",content:[
-            {type:"input_text",text:extractionPrompt()+`
-이 호출은 ${i+1}번째 사진 한 장만 처리한다. JSON만 출력해라.`},
-            {type:"input_image",image_url:photo.preparedUrl||photo.dataUrl||photo.url,detail:"high"}
-          ]}]
-        },{timeoutMs:45000,retries:0});
-        const d=await parseAIJSONOrRepair(responseText(single),"photo_single");
-        if(!merged.summary && d.summary)merged.summary=d.summary;
-        merged.items.push(...(d.items||[]));
-        merged.extraItems.push(...(d.extraItems||[]));
-        merged.warnings.push(...(d.warnings||[]));
-        merged.corrections.push(...(d.corrections||[]));
+    for(let i=0;i<S.photos.length;i++){
+      const photo=S.photos[i];
+      const pct=25+Math.round((i/Math.max(1,S.photos.length))*60);
+      setProgress("analysis",pct,`정확 인식 ${i+1}/${S.photos.length}`,`${photo.name}의 영어/한국어 행을 따로 읽고 다시 맞추는 중`);
+
+      const result=await openai({
+        model:taskModel("photo"),
+        reasoning:{effort:"none"},
+        text:{verbosity:"low"},
+        max_output_tokens:S.mode==="wordlist"?3000:3600,
+        input:[{role:"user",content:[
+          {type:"input_text",text:singlePhotoAccuracyPrompt(i+1)},
+          {type:"input_image",image_url:photo.data,detail:"high"}
+        ]}]
+      },{prefix:"analysis",timeoutMs:65000,retries:1});
+
+      const d=await parseAIJSONOrRepair(responseText(result),"photo_page_"+(i+1));
+      if(!merged.summary&&d.summary)merged.summary=d.summary;
+      merged.items.push(...(d.items||[]).map(x=>({...x,page:i+1})));
+      merged.extraItems.push(...(d.extraItems||[]));
+      merged.warnings.push(...(d.warnings||[]).map(w=>`사진 ${i+1}: ${w}`));
+      merged.corrections.push(...(d.corrections||[]));
+    }
+
+    // 같은 영어가 여러 페이지에 반복되면 뜻을 합치고, 첫 등장 순서는 유지한다.
+    const byTerm=new Map();
+    for(const item of merged.items){
+      const k=norm(item.term);
+      if(!k)continue;
+      if(!byTerm.has(k))byTerm.set(k,item);
+      else{
+        const old=byTerm.get(k);
+        old.meanings=[...new Set([...(old.meanings||[]),...(item.meanings||[])])];
+        old.confidence=Math.min(Number(old.confidence||1),Number(item.confidence||1));
       }
-      const seen=new Set();
-      merged.items=merged.items.filter(x=>{
-        const k=norm(x.term);
-        if(!k||seen.has(k))return false;
-        seen.add(k);
-        return true;
-      });
-      const seenExtra=new Set();
-      merged.extraItems=merged.extraItems.filter(x=>{
-        const k=norm(x.term);
-        if(!k||seen.has(k)||seenExtra.has(k))return false;
-        seenExtra.add(k);
-        return true;
-      }).slice(0,12);
-      S.extracted=normalizeExtractedData(merged);
-      S.extracted.webVerified=false;
-      S.extracted.usedWebSearch=false;
     }
-    S.extracted.webVerified=usedSearch||!!S.extracted.webVerified;
-    S.extracted.usedWebSearch=usedSearch||!!S.extracted.usedWebSearch;
-    if(!S.extracted.verificationNote){
-      S.extracted.verificationNote=S.extracted.webVerified?"원본 재검토 + 의심 항목 웹 검증 완료":"원본 재검토 완료 · 의심 항목 없음";
-    }
+    merged.items=[...byTerm.values()];
+    S.extracted=normalizeExtractedData(merged);
+    S.extracted.webVerified=false;
+    S.extracted.usedWebSearch=false;
+    S.extracted.verificationNote="원본 사진을 페이지별로 고화질 대조 완료";
+
     putPhotoCache(S.extracted);
     renderExtract();bindPickEditors();
-
-    setProgress("analysis",100,"완료",S.extracted.webVerified?"의심 항목만 웹 검색해서 검증했어.":"필요하면 안정 모드로 나눠 읽어서 완료했어.");
+    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개를 페이지별로 대조했어. 웹검색 없이도 바로 저장할 수 있어.`);
     stopProgress("analysis");
-    setTimeout(()=>$("#analysisStatus").classList.add("hidden"),900);
+    setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1000);
     $("#extractPanel").classList.remove("hidden");
     $("#extractPanel").scrollIntoView({behavior:"smooth"});
   }catch(e){
@@ -1029,6 +1022,7 @@ $("#analyzeBtn").onclick=async()=>{
     btn.disabled=false;
   }
 };
+
 function relText(x){return [x.synonyms?.length?"동의: "+x.synonyms.join(", "):"",x.antonyms?.length?"반의: "+x.antonyms.join(", "):"",x.derivatives?.length?"파생: "+x.derivatives.join(", "):""].filter(Boolean).join(" · ")}
 function pick(x,key,checked){
   return `<div class="pick" data-pickrow="${key}">
@@ -1037,6 +1031,7 @@ function pick(x,key,checked){
       <b>${esc(x.term||"")}</b>
       <small>${esc((x.meanings||[]).join(", "))}</small>
       ${x.context?`<small>${esc(x.context)}</small>`:""}
+      ${Number(x.confidence||1)<0.8?`<small class="confidence-warn">⚠ 글씨 확인 필요 · 직접 수정 권장</small>`:""}
       ${relText(x)?`<small>${esc(relText(x))}</small>`:""}
       <div class="pick-editor hidden" data-editor="${key}">
         <input class="input" data-edit-term="${key}" value="${esc(x.term||"")}" placeholder="영어 단어/표현">
@@ -1101,6 +1096,8 @@ function bindPickEditors(){
       const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
       item.term=term;
       item.meanings=meanings.length?meanings:[meaningText];
+      item.confidence=1;
+      item.userEdited=true;
       refreshPickRow(key);
       toast("수정 완료 ✏️");
     };
@@ -1116,7 +1113,7 @@ function addWord(x){
   S.words.push(makeWord(x));return true;
 }
 $("#savePicked").onclick=()=>{
-  const d=S.extracted||{};if(!d.webVerified)return toast("웹 검색 검증이 끝난 결과만 저장할 수 있어.");
+  const d=S.extracted||{};
   const arr=[];(d.items||[]).forEach((x,i)=>{$(`[data-pick="m${i}"]`)?.checked&&arr.push(x)});(d.extraItems||[]).forEach((x,i)=>{$(`[data-pick="e${i}"]`)?.checked&&arr.push(x)});
   let n=0;arr.forEach(x=>{if(addWord(x))n++});
   S.photos.forEach(p=>{if(p.preview&&String(p.preview).startsWith("blob:")){try{URL.revokeObjectURL(p.preview)}catch{}}});
@@ -1719,7 +1716,7 @@ migrate();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveA
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=067",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=068",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
