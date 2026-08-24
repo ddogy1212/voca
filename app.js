@@ -15,6 +15,7 @@ const S={
   betaCode:savedBeta.code||"",betaLabel:savedBeta.label||"",serverUrl:savedServer,
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,reviewRangeMode:"all",reviewSource:null,
+  testSkipTimer:null,
   testMode:"meaning",testRangeMode:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
@@ -1520,6 +1521,65 @@ $("#reviewFolderPicker").onchange=e=>{
   startReview();
 };
 
+
+function buildSpacedReviewQueue(base,shuf=false){
+  const primary=shuf?shuffle([...base]):[...base];
+  const queue=[...primary];
+
+  // 넘김 가중치는 유지하되 동일 단어가 바로 연속되지 않도록
+  // 추가 복습 카드를 여러 라운드로 뒤쪽에 분산한다.
+  for(let round=1;round<=2;round++){
+    let extras=primary.filter(w=>Math.min(2,w.skipCount||0)>=round);
+    if(shuf)extras=shuffle(extras);
+
+    for(const w of extras){
+      // 직전 카드와 같은 단어면 가능한 다른 위치에 먼저 넣는다.
+      if(queue.length && queue[queue.length-1]?.id===w.id && primary.length>1){
+        const alt=primary.find(x=>x.id!==w.id);
+        if(alt && !queue.some((x,i)=>i>=primary.length && x===alt)){
+          queue.push(alt);
+        }
+      }
+      queue.push(w);
+    }
+  }
+
+  // 혹시 남아 있는 연속 중복도 가능한 한 뒤 카드와 교환한다.
+  for(let i=1;i<queue.length;i++){
+    if(queue[i]?.id!==queue[i-1]?.id)continue;
+    const j=queue.findIndex((x,idx)=>idx>i && x?.id!==queue[i]?.id);
+    if(j>i){
+      [queue[i],queue[j]]=[queue[j],queue[i]];
+    }
+  }
+  return queue;
+}
+
+function deferSameReviewWord(wordId,minGap=2){
+  if(!Array.isArray(S.reviewQueue))return;
+  const next=S.reviewIndex+1;
+  if(next>=S.reviewQueue.length)return;
+
+  // 다음 카드가 방금 본 단어라면 최소 몇 장 뒤로 미룬다.
+  if(S.reviewQueue[next]?.id===wordId){
+    const [dup]=S.reviewQueue.splice(next,1);
+    const target=Math.min(S.reviewQueue.length, next+Math.max(1,minGap));
+    S.reviewQueue.splice(target,0,dup);
+  }
+}
+
+const praiseLines=[
+  "좋아! 정확해 👏",
+  "정답! 잘 기억했어 🔥",
+  "완벽해 ✨",
+  "좋아, 제대로 외웠네 😎",
+  "정확해! 계속 가자 ✅",
+  "굿! 바로 맞췄어 🙌"
+];
+function randomPraise(){
+  return praiseLines[Math.floor(Math.random()*praiseLines.length)];
+}
+
 function startReview(shuf=false){
   syncReviewRangeUI();
 
@@ -1563,14 +1623,7 @@ function startReview(shuf=false){
     base=due.length?due:[...availableForReview].sort((a,b)=>weakness(b)-weakness(a));
   }
 
-  const weighted=[];
-  for(const w of base){
-    weighted.push(w);
-    const extra=Math.min(2,w.skipCount||0);
-    for(let i=0;i<extra;i++)weighted.push(w);
-  }
-
-  S.reviewQueue=shuf?shuffle(weighted):weighted;
+  S.reviewQueue=buildSpacedReviewQueue(base,shuf);
   S.reviewIndex=0;
   renderReview();
 }
@@ -1591,10 +1644,28 @@ function renderReview(){
   setTimeout(()=>speakEnglish(w.term),90);
 }
 $("#flash").onclick=()=>{S.reviewFlipped=!S.reviewFlipped;$("#reviewBack").classList.toggle("hidden",!S.reviewFlipped);$("#memoryBtns").classList.toggle("hidden",!S.reviewFlipped);$("#tapHint").classList.toggle("hidden",S.reviewFlipped)};
-$$("[data-memory]").forEach(b=>b.onclick=e=>{e.stopPropagation();applyMemory(S.reviewQueue[S.reviewIndex],b.dataset.memory);S.reviewIndex++;renderReview()});
+$$("[data-memory]").forEach(b=>b.onclick=e=>{
+  e.stopPropagation();
+  const w=S.reviewQueue[S.reviewIndex];
+  const grade=b.dataset.memory;
+  if(!w)return;
+
+  applyMemory(w,grade);
+
+  // 애매/모름을 눌러도 동일 단어가 바로 다음 카드로 연속 등장하지 않게 미룬다.
+  if(grade==="hard")deferSameReviewWord(w.id,3);
+  if(grade==="again")deferSameReviewWord(w.id,2);
+
+  if(grade==="good" && (w.goodCount||0)<2){
+    toast(randomPraise());
+  }
+
+  S.reviewIndex++;
+  renderReview();
+});
 $("#speakBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(w)speakEnglish(w.term)};
 $("#starBtn").onclick=()=>{const w=S.reviewQueue[S.reviewIndex];if(!w)return;w.star=!w.star;save();$("#starBtn").textContent=w.star?"★ 중요":"☆ 중요"};
-let touch=null;$("#flash").addEventListener("touchstart",e=>{const t=e.changedTouches[0];touch={x:t.clientX,y:t.clientY}},{passive:true});$("#flash").addEventListener("touchend",e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y;touch=null;if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)){if(dx<0&&S.reviewIndex<S.reviewQueue.length-1){S.reviewIndex++;renderReview()}else if(dx>0&&S.reviewIndex>0){S.reviewIndex--;renderReview()}}else if(dy<-90&&S.reviewFlipped){applyMemory(S.reviewQueue[S.reviewIndex],"good");S.reviewIndex++;renderReview()}},{passive:true});
+let touch=null;$("#flash").addEventListener("touchstart",e=>{const t=e.changedTouches[0];touch={x:t.clientX,y:t.clientY}},{passive:true});$("#flash").addEventListener("touchend",e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y;touch=null;if(Math.abs(dx)>70&&Math.abs(dx)>Math.abs(dy)){if(dx<0&&S.reviewIndex<S.reviewQueue.length-1){S.reviewIndex++;renderReview()}else if(dx>0&&S.reviewIndex>0){S.reviewIndex--;renderReview()}}else if(dy<-90&&S.reviewFlipped){const w=S.reviewQueue[S.reviewIndex];applyMemory(w,"good");if((w.goodCount||0)<2)toast(randomPraise());S.reviewIndex++;renderReview()}},{passive:true});
 
 /* test */
 $$(".test-mode").forEach(b=>b.onclick=()=>{
@@ -1689,6 +1760,10 @@ function startTest(){
   renderTest();
 }
 function renderTest(){
+  if(S.testSkipTimer){
+    clearTimeout(S.testSkipTimer);
+    S.testSkipTimer=null;
+  }
   if(S.testIndex>=S.testQueue.length){toast(`테스트 완료 ${S.testCorrect}/${S.testQueue.length}`);show("home");return}
   const w=S.testQueue[S.testIndex];$("#testNo").textContent=`${S.testIndex+1} / ${S.testQueue.length}`;$("#testScore").textContent=`${S.testCorrect} correct`;
   if(S.testMode==="meaning"){$("#promptLabel").textContent="이 단어의 뜻은?";$("#question").textContent=w.term;$("#answer").placeholder="한국어 뜻 입력"}else{$("#promptLabel").textContent="이 뜻의 영어 단어는?";$("#question").textContent=w.meanings[0]||"";$("#answer").placeholder="영어 단어 입력"}
@@ -1742,7 +1817,7 @@ JSON만:{"verdict":"correct"|"almost"|"wrong","reason":"짧은 한국어 한 문
         }
       }
     }
-    const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);if(ok){rewardRecord("test",w.id);S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good")}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b><br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#graduateBtn").disabled=false;$("#nextBtn").classList.remove("hidden");
+    const v=d.verdict||"wrong",ok=v==="correct";markReviewed(w);let praise="";if(ok){rewardRecord("test",w.id);S.testCorrect++;S.meta.correct++;w.correct=(w.correct||0)+1;w.dueAt=now()+interval(w,"good");praise=randomPraise();toast(praise)}else{S.meta.wrong++;w.wrong=(w.wrong||0)+1;w.dueAt=now()+interval(w,v==="almost"?"hard":"again")}w.seen=(w.seen||0)+1;studyTouch();save();S.lastGrade={answer:a,verdict:v};const labels={correct:"정답 ✅",almost:"거의 맞음 △",wrong:"오답 ✕"};$("#resultBox").className=`result ${v}`;$("#resultBox").innerHTML=`<b>${labels[v]}</b>${praise?`<br><strong>${esc(praise)}</strong>`:""}<br>${esc(d.reason||"")}<br><small>핵심 뜻: ${esc(d.acceptedMeaning||w.meanings[0]||w.term)}</small>`;$("#answer").disabled=true;$("#graduateBtn").disabled=false;$("#nextBtn").classList.remove("hidden");
   }catch(e){
     toast(e.message);
     btn.disabled=false;
@@ -1769,12 +1844,13 @@ $("#skipBtn").onclick=()=>{
   const w=S.testQueue[S.testIndex];
   if(!w)return;
 
+  const currentIndex=S.testIndex;
+
   markReviewed(w);
   w.skipCount=(w.skipCount||0)+1;
   w.seen=(w.seen||0)+1;
 
-  // 넘기기는 오답률에는 포함하지 않지만,
-  // 기억이 약한 것으로 판단해 복습 우선순위를 강하게 높인다.
+  // 모르겠음은 오답률에는 포함하지 않고 복습 우선순위만 높인다.
   w.strength=Math.max(0,(w.strength||0)-1);
   w.stability=Math.max(.25,(w.stability||.5)*.65);
   w.dueAt=now();
@@ -1783,9 +1859,26 @@ $("#skipBtn").onclick=()=>{
   studyTouch();
   save();
 
-  toast(`↪ ${w.term}: 암기에서 더 자주 보여줄게`);
-  S.testIndex++;
-  renderTest();
+  $("#answer").disabled=true;
+  $("#gradeBtn").disabled=true;
+  $("#skipBtn").disabled=true;
+  $("#graduateBtn").disabled=true;
+  $("#nextBtn").classList.add("hidden");
+
+  const answerText=S.testMode==="meaning"
+    ? (w.meanings||[]).join(" · ")
+    : w.term;
+
+  $("#resultBox").className="result almost";
+  $("#resultBox").innerHTML=`<b>정답 보기 👀</b><br><strong>${esc(answerText||"정답 정보 없음")}</strong><br><small>잠깐 보고 다음 문제로 넘어갈게.</small>`;
+
+  // 약 1.6초 동안 정답을 보여준 뒤 자동으로 다음 문제.
+  S.testSkipTimer=setTimeout(()=>{
+    if(S.testIndex===currentIndex){
+      S.testIndex++;
+      renderTest();
+    }
+  },1600);
 };
 
 $("#nextBtn").onclick=()=>{S.testIndex++;renderTest()};
@@ -2174,7 +2267,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=079",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=080",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
