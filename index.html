@@ -10,12 +10,25 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=080">
+  <link rel="stylesheet" href="./styles.css?v=081">
 </head>
 <body>
+<div class="study-mode-bar" aria-label="학습 언어 모드">
+  <div class="study-mode-main">
+    <button id="englishStudyModeBtn" class="study-main-btn active" type="button">🇬🇧 영어 모드</button>
+    <button id="minorStudyModeBtn" class="study-main-btn" type="button">🌐 부전공어 모드</button>
+  </div>
+  <div id="minorLanguageRow" class="minor-language-row hidden">
+    <button type="button" data-study-lang="ru">🇷🇺 러시아어</button>
+    <button type="button" data-study-lang="ja">🇯🇵 일본어</button>
+    <button type="button" data-study-lang="fr">🇫🇷 프랑스어</button>
+    <button type="button" data-study-lang="zh">🇨🇳 중국어</button>
+  </div>
+  <div id="activeStudyModeNote" class="active-study-mode-note">영어 단어장 · 영어 데이터만 표시</div>
+</div>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.8.0 <span class="build-badge">BUILD 080</span></small>
+    <small>VOCABWALK AI · v0.8.1 <span class="build-badge">BUILD 081</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -91,11 +104,12 @@
 
     <div class="seg">
       <button class="mode active" data-mode="wordlist">📖 단어장 사진</button>
-      <button class="mode" data-mode="passage">🧾 영어 지문</button>
+      <button id="passageModeBtn" class="mode" data-mode="passage">🧾 영어 지문</button>
     </div>
 
     <input id="sourceLabel" class="input" maxlength="60" placeholder="폴더 이름 (예: D17, 영어 프린트 3과)">
     <p class="fine">이름을 적고 사진을 인식하면 같은 이름의 폴더가 자동으로 만들어져.</p>
+    <div id="minorAccuracyNotice" class="minor-accuracy-notice hidden">🔎 부전공어 정밀 인식: 원문 철자·문자·악센트·기호를 두 번 대조하고, 애매한 글자는 추측하지 않고 경고로 표시해.</div>
 
     <div class="manual-panel">
       <div class="section-head no-top">
@@ -107,7 +121,7 @@
       </div>
 
       <div id="manualBody" class="hidden">
-        <div class="manual-help">
+        <div id="manualHelp" class="manual-help">
           한 줄에 하나씩 입력해. <b>영어 = 한국어 뜻</b> 형식이 제일 편해.
           <br>예: <code>reinforce = 강화하다</code>
         </div>
@@ -317,8 +331,8 @@ compelling = 설득력 있는"></textarea>
     </div>
 
     <div class="seg">
-      <button class="test-mode active" data-test="meaning">영 → 한</button>
-      <button class="test-mode" data-test="reverse">한 → 영</button>
+      <button id="meaningTestModeBtn" class="test-mode active" data-test="meaning">영 → 한</button>
+      <button id="reverseTestModeBtn" class="test-mode" data-test="reverse">한 → 영</button>
     </div>
     <div class="test-range-panel">
       <div class="test-range-tabs">
@@ -389,7 +403,7 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 080</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 081</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
@@ -522,7 +536,7 @@ compelling = 설득력 있는"></textarea>
     <span class="eyebrow">EDIT WORD</span>
     <h2>단어 수정</h2>
 
-    <label class="folder-edit-label" for="folderEditTerm">영어 단어 / 표현</label>
+    <label id="folderEditTermLabel" class="folder-edit-label" for="folderEditTerm">영어 단어 / 표현</label>
     <input id="folderEditTerm" class="folder-edit-input" type="text" autocomplete="off">
 
     <label class="folder-edit-label" for="folderEditMeaning">한국어 뜻</label>
@@ -538,6 +552,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=080"></script>
+<script src="./app.js?v=081"></script>
 </body>
 </html>

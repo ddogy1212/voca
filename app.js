@@ -1,17 +1,32 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_LEGACY_API="vw_api_v4",K_BETA="vw_beta_access_v1",K_SERVER="vw_beta_server_v1",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v4",K_API_STATS="vw_api_stats_v1",K_API_MONTH="vw_api_month_v1",K_FOLDERS="vw_source_folders_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_LEGACY_API="vw_api_v4",K_BETA="vw_beta_access_v1",K_SERVER="vw_beta_server_v1",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v4",K_API_STATS="vw_api_stats_v1",K_API_MONTH="vw_api_month_v1",K_FOLDERS="vw_source_folders_v1",K_STUDY_LANG="vw_study_language_v1",K_LAST_MINOR="vw_last_minor_language_v1";
+const STUDY_LANGS={
+  en:{code:"en",name:"영어",short:"영",emoji:"🇬🇧",tts:"en-US",kind:"english",sampleTerm:"reinforce",sampleMeaning:"강화하다"},
+  ru:{code:"ru",name:"러시아어",short:"러",emoji:"🇷🇺",tts:"ru-RU",kind:"minor",sampleTerm:"помогать",sampleMeaning:"돕다"},
+  ja:{code:"ja",name:"일본어",short:"일",emoji:"🇯🇵",tts:"ja-JP",kind:"minor",sampleTerm:"大切",sampleMeaning:"소중함, 중요함"},
+  fr:{code:"fr",name:"프랑스어",short:"불",emoji:"🇫🇷",tts:"fr-FR",kind:"minor",sampleTerm:"important",sampleMeaning:"중요한"},
+  zh:{code:"zh",name:"중국어",short:"중",emoji:"🇨🇳",tts:"zh-CN",kind:"minor",sampleTerm:"重要",sampleMeaning:"중요하다"}
+};
+function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
+function freshMeta(){return {correct:0,wrong:0,lastStudy:null,streak:0}}
+function freshReward(){return {date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]}}
+function freshCache(){return {items:{},order:[]}}
+function validStudyLang(x){return Object.prototype.hasOwnProperty.call(STUDY_LANGS,x)?x:"en"}
+function profileKey(base,lang){lang=validStudyLang(lang);return lang==="en"?base:`${base}_${lang}`}
+const initialStudyLang=validStudyLang(localStorage.getItem(K_STUDY_LANG)||"en");
 const savedBeta=load(K_BETA,{code:"",label:""});
 const savedServer=String(localStorage.getItem(K_SERVER)||"").trim();
-// BUILD 077: remove any browser-saved OpenAI key from older personal-test builds.
+// 브라우저에 남아 있을 수 있는 구형 OpenAI 키는 계속 제거한다.
 localStorage.removeItem(K_LEGACY_API);
-const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
-const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
-const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
+const rewardSaved=load(profileKey(K_REWARD,initialStudyLang),freshReward());
+const gradeCacheSaved=load(profileKey(K_GRADE_CACHE,initialStudyLang),freshCache());
+const photoCacheSaved=load(profileKey(K_PHOTO_CACHE,initialStudyLang),freshCache());
 const apiStatsSaved=load(K_API_STATS,{date:"",calls:0,cacheHits:0});
 const apiMonthSaved=load(K_API_MONTH,{month:"",photoUsed:0,calls:0,cacheHits:0,inputTokens:0,outputTokens:0,models:{}});
-const folderSaved=load(K_FOLDERS,[]);
+const folderSaved=load(profileKey(K_FOLDERS,initialStudyLang),[]);
 const S={
-  words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
+  studyLang:initialStudyLang,lastMinorLang:initialStudyLang!=="en"?initialStudyLang:(validStudyLang(localStorage.getItem(K_LAST_MINOR)||"ru")==="en"?"ru":validStudyLang(localStorage.getItem(K_LAST_MINOR)||"ru")),
+  words:load(profileKey(K_WORDS,initialStudyLang),[]),meta:load(profileKey(K_META,initialStudyLang),freshMeta()),
   betaCode:savedBeta.code||"",betaLabel:savedBeta.label||"",serverUrl:savedServer,
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,reviewRangeMode:"all",reviewSource:null,
@@ -24,8 +39,7 @@ const S={
   filter:"all"
 };
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-function save(){localStorage.setItem(K_WORDS,JSON.stringify(S.words));localStorage.setItem(K_META,JSON.stringify(S.meta));localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders));renderHome()}
+function save(){localStorage.setItem(profileKey(K_WORDS,S.studyLang),JSON.stringify(S.words));localStorage.setItem(profileKey(K_META,S.studyLang),JSON.stringify(S.meta));localStorage.setItem(profileKey(K_FOLDERS,S.studyLang),JSON.stringify(S.folders));renderHome()}
 function now(){return Date.now()}function day(n){return n*86400000}
 function norm(s){return String(s||"").toLowerCase().trim().replace(/\s+/g," ")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -65,6 +79,69 @@ function shuffle(a){
   return out;
 }
 function toast(t){const x=$("#toast");x.textContent=t;x.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>x.classList.remove("show"),2400)}
+function langCfg(){return STUDY_LANGS[S.studyLang]||STUDY_LANGS.en}
+function isMinorMode(){return langCfg().kind==="minor"}
+function clearVolatileStudyState(){
+  if(S.testSkipTimer){clearTimeout(S.testSkipTimer);S.testSkipTimer=null}
+  for(const p of S.photos||[]){if(p.preview&&String(p.preview).startsWith("blob:")){try{URL.revokeObjectURL(p.preview)}catch{}}}
+  S.mode="wordlist";S.photos=[];S.extracted=null;
+  S.reviewQueue=[];S.reviewIndex=0;S.reviewPreset=null;S.reviewRangeMode="all";S.reviewSource=null;
+  S.testQueue=[];S.testIndex=0;S.testCorrect=0;S.testRangeMode="all";S.testSource=null;S.lastGrade=null;
+  S.transformQueue=[];S.transformIndex=0;S.transformCorrect=0;S.transformSource=null;
+  S.folderManagerName=null;S.folderWordEditId=null;S.filter="all";
+}
+function persistCurrentProfile(){
+  localStorage.setItem(profileKey(K_WORDS,S.studyLang),JSON.stringify(S.words));
+  localStorage.setItem(profileKey(K_META,S.studyLang),JSON.stringify(S.meta));
+  localStorage.setItem(profileKey(K_FOLDERS,S.studyLang),JSON.stringify(S.folders));
+  localStorage.setItem(profileKey(K_REWARD,S.studyLang),JSON.stringify(S.reward));
+  localStorage.setItem(profileKey(K_GRADE_CACHE,S.studyLang),JSON.stringify(S.gradeCache));
+  localStorage.setItem(profileKey(K_PHOTO_CACHE,S.studyLang),JSON.stringify(S.photoCache));
+}
+function loadStudyProfile(lang){
+  S.studyLang=validStudyLang(lang);
+  S.words=load(profileKey(K_WORDS,S.studyLang),[]);
+  S.meta=load(profileKey(K_META,S.studyLang),freshMeta());
+  S.folders=load(profileKey(K_FOLDERS,S.studyLang),[]);
+  S.reward=load(profileKey(K_REWARD,S.studyLang),freshReward());
+  S.gradeCache=load(profileKey(K_GRADE_CACHE,S.studyLang),freshCache());
+  S.photoCache=load(profileKey(K_PHOTO_CACHE,S.studyLang),freshCache());
+  S.rewardSeriesView=0;
+  migrate();syncFoldersFromWords();ensureRewardDay();saveFolders();saveReward();saveGradeCache();savePhotoCache();
+}
+function updateStudyLanguageUI(){
+  const c=langCfg(),minor=isMinorMode();
+  document.body.classList.toggle("minor-study-mode",minor);
+  $("#englishStudyModeBtn")?.classList.toggle("active",!minor);
+  $("#minorStudyModeBtn")?.classList.toggle("active",minor);
+  $("#minorLanguageRow")?.classList.toggle("hidden",!minor);
+  $$('[data-study-lang]').forEach(b=>b.classList.toggle("active",b.dataset.studyLang===S.studyLang));
+  const note=$("#activeStudyModeNote");if(note)note.textContent=minor?`${c.emoji} 부전공어 · ${c.name} · 다른 언어/영어와 완전 분리`:`${c.emoji} 영어 단어장 · 부전공어와 완전 분리`;
+  const passage=$("#passageModeBtn");if(passage)passage.textContent=`🧾 ${c.name} 지문`;
+  const source=$("#sourceLabel");if(source)source.placeholder=`폴더 이름 (예: ${minor?c.name+" 3과":"D17, 영어 프린트 3과"})`;
+  const mh=$("#manualHelp");if(mh)mh.innerHTML=`한 줄에 하나씩 입력해. <b>${c.name} = 한국어 뜻</b> 형식이 제일 편해.<br>예: <code>${esc(c.sampleTerm)} = ${esc(c.sampleMeaning)}</code>`;
+  const bulk=$("#manualBulk");if(bulk)bulk.placeholder=`${c.sampleTerm} = ${c.sampleMeaning}`;
+  const mbtn=$("#meaningTestModeBtn");if(mbtn)mbtn.textContent=`${c.short} → 한`;
+  const rbtn=$("#reverseTestModeBtn");if(rbtn)rbtn.textContent=`한 → ${c.short}`;
+  const search=$("#search");if(search)search.placeholder=`${c.name} / 한국어 검색`;
+  const fl=$("#folderEditTermLabel");if(fl)fl.textContent=`${c.name} 단어 / 표현`;
+  const notice=$("#minorAccuracyNotice");if(notice)notice.classList.toggle("hidden",!minor);
+  $$(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===S.mode));
+  const precision=$("#precisionAnalyzeBtn");if(precision)precision.textContent=minor?`🔎 ${c.name} 초정밀 재검사 · Terra (선택)`:`🔎 정밀 재검사 · Terra (선택)`;
+  const fine=[...document.querySelectorAll('.precision-note')][0];if(fine)fine.textContent=minor?`${c.name} 원문을 다시 대조하는 선택 기능이야. 기본 인식도 부전공어 전용 정밀 규칙을 사용해.`:`기본 분석보다 모델 단가가 높아. 결과가 이상할 때만 눌러.`;
+  if($("#photoSelectStatus")&&!S.photos.length)$("#photoSelectStatus").textContent=`아직 선택된 ${c.name} 자료 사진이 없어.`;
+}
+function switchStudyLanguage(lang){
+  lang=validStudyLang(lang);if(lang===S.studyLang){updateStudyLanguageUI();return}
+  persistCurrentProfile();clearVolatileStudyState();
+  if(lang!=="en"){S.lastMinorLang=lang;localStorage.setItem(K_LAST_MINOR,lang)}
+  localStorage.setItem(K_STUDY_LANG,lang);
+  loadStudyProfile(lang);updateStudyLanguageUI();renderPhotos();renderHome();renderRewardStrip();show("home");
+  toast(`${langCfg().emoji} ${langCfg().name} 모드로 전환 · 단어/폴더/테스트 완전 분리`);
+}
+$("#englishStudyModeBtn").onclick=()=>switchStudyLanguage("en");
+$("#minorStudyModeBtn").onclick=()=>switchStudyLanguage(S.lastMinorLang||"ru");
+$$('[data-study-lang]').forEach(b=>b.onclick=()=>switchStudyLanguage(b.dataset.studyLang));
 function show(id){
   $$(".view").forEach(v=>v.classList.toggle("active",v.id===id));
   $$(".nav").forEach(v=>v.classList.toggle("active",v.dataset.go===id));
@@ -171,7 +248,7 @@ function sourceGroups(){
   });
   return arr;
 }
-function saveFolders(){localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders))}
+function saveFolders(){localStorage.setItem(profileKey(K_FOLDERS,S.studyLang),JSON.stringify(S.folders))}
 function openFolderEdit(mode,oldName=null){
   S.folderEditMode=mode;S.folderEditOldName=oldName;
   $("#folderEditTitle").textContent=mode==="rename"?"폴더 이름 바꾸기":"새 폴더 만들기";
@@ -275,7 +352,7 @@ function ensureRewardDay(){
 }
 function saveReward(){
   ensureRewardDay();
-  localStorage.setItem(K_REWARD,JSON.stringify(S.reward));
+  localStorage.setItem(profileKey(K_REWARD,S.studyLang),JSON.stringify(S.reward));
 }
 function rewardGoals(){
   const words=Math.max(0,S.words.length);
@@ -537,7 +614,7 @@ function noteCacheHit(){
   noteMonthlyCacheHit();
 }
 function saveGradeCache(){
-  localStorage.setItem(K_GRADE_CACHE,JSON.stringify(S.gradeCache));
+  localStorage.setItem(profileKey(K_GRADE_CACHE,S.studyLang),JSON.stringify(S.gradeCache));
 }
 function gradeCacheKey(w,a){
   return [norm(w.term),norm(a),(w.meanings||[]).map(norm).sort().join("|")].join("::");
@@ -561,7 +638,7 @@ function putGradeCache(w,a,v){
   saveGradeCache();
 }
 function savePhotoCache(){
-  localStorage.setItem(K_PHOTO_CACHE,JSON.stringify(S.photoCache));
+  localStorage.setItem(profileKey(K_PHOTO_CACHE,S.studyLang),JSON.stringify(S.photoCache));
 }
 function photoCacheKey(){
   const source=$("#sourceLabel").value.trim();
@@ -569,7 +646,7 @@ function photoCacheKey(){
     const f=p.file;
     return [p.name,p.size,f?.lastModified||0].join(":");
   });
-  return [S.mode,source,...parts].join("||");
+  return [S.studyLang,S.mode,source,...parts].join("||");
 }
 function getPhotoCache(){
   const k=photoCacheKey(),v=S.photoCache?.items?.[k];
@@ -1127,10 +1204,12 @@ async function prepareImageForHighDetail(file){
     // 손글씨 정확도 우선: 기존 1800px보다 해상도를 높이고,
     // 연필 글씨가 흐려지지 않도록 약하게 대비를 보정한다.
     const pixels=decoded.width*decoded.height;
+    const maxSide=isMinorMode()?2200:2000;
+    const maxPixels=isMinorMode()?3600000:3000000;
     const scale=Math.min(
       1,
-      2000/Math.max(decoded.width,decoded.height),
-      Math.sqrt(3000000/Math.max(1,pixels))
+      maxSide/Math.max(decoded.width,decoded.height),
+      Math.sqrt(maxPixels/Math.max(1,pixels))
     );
 
     const c=document.createElement("canvas");
@@ -1146,7 +1225,7 @@ async function prepareImageForHighDetail(file){
     ctx.drawImage(decoded.source,0,0,c.width,c.height);
     try{ctx.filter="none"}catch{}
 
-    return await canvasToData(c,.84);
+    return await canvasToData(c,isMinorMode()?0.88:0.84);
   }finally{
     decoded.close?.();
   }
@@ -1181,15 +1260,24 @@ function imageContent(prefix=""){
   return c;
 }
 
+function minorOrthographyRules(){
+  if(S.studyLang==="ru")return `러시아어 전용 확인: 키릴 문자 자체를 읽고 라틴 문자로 바꾸지 마라. е/ё, и/й, ь/ъ, ш/щ, ц/ч, 어미를 특히 다시 대조한다. 강세표시가 사진에 실제로 있으면 보존하고, 없으면 새로 만들지 않는다.`;
+  if(S.studyLang==="ja")return `일본어 전용 확인: 한자·히라가나·가타카나를 서로 바꾸지 말고 원문 그대로 보존한다. 작은 っ/ゃ/ゅ/ょ, 장음 ー, 탁점/반탁점, 오쿠리가나를 한 글자씩 다시 대조한다. 후리가나가 있으면 원 단어를 임의로 후리가나로 교체하지 않는다.`;
+  if(S.studyLang==="fr")return `프랑스어 전용 확인: é/è/ê/ë, à/â, ç, î/ï, ô, ù/û/ü 등 악센트와 cédille를 반드시 보존한다. apostrophe와 하이픈, 사진에 적힌 관사·성 표시를 멋대로 지우거나 추가하지 않는다.`;
+  if(S.studyLang==="zh")return `중국어 전용 확인: 간체/번체를 원문과 다르게 자동 변환하지 않는다. 모양이 비슷한 한자를 획 단위로 다시 대조한다. 병음과 성조표시가 사진에 있을 때만 context에 보존하고, 없으면 추측해 추가하지 않는다.`;
+  return "";
+}
 function extractionPrompt(){
   const source=$("#sourceLabel").value.trim();
-  if(S.mode==="passage")return `너는 한국 고등학교 영어 내신/수능 독해 어휘 코치다.
+  const c=langCfg();
+  if(S.studyLang==="en"){
+    if(S.mode==="passage")return `너는 한국 고등학교 영어 내신/수능 독해 어휘 코치다.
 원본 사진을 직접 읽고, 철자와 문맥을 보수적으로 확인한다. 사이트 OCR 결과는 없다.
 추측 금지. 확신이 낮은 것은 warnings에 남긴다.
 출처:${source||"(없음)"}
 JSON만 출력:
 {"title":"자료 제목","summary":"핵심 한국어 1~2문장","items":[{"term":"표제어","meanings":["문맥 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"원본 사진 대조 완료"}`;
-  return `너는 손글씨 영어 단어장을 정확히 옮기는 전사기다. 사이트 OCR은 없다.
+    return `너는 손글씨 영어 단어장을 정확히 옮기는 전사기다. 사이트 OCR은 없다.
 왼쪽 영어와 오른쪽 한국어를 반드시 같은 가로줄끼리 대응한다.
 위에서 아래 순서대로 한 줄씩 읽는다.
 영어는 단어뿐 아니라 account for, take ~ into account 같은 표현도 한 항목으로 보존한다.
@@ -1200,18 +1288,47 @@ JSON만 출력:
 출처:${source||"(없음)"}
 JSON만 출력:
 {"title":"사진 단어장","summary":"","items":[{"term":"사진에 적힌 영어/표현","meanings":["같은 줄의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"원본 사진 대조 완료"}`;
+  }
+
+  const ortho=minorOrthographyRules();
+  if(S.mode==="passage")return `너는 한국 고등학생의 ${c.name} 부전공 학습을 돕는 초정밀 어휘 전사·검증 코치다.
+사용자는 원문 철자가 틀렸는지 스스로 판단하기 어려울 수 있으므로 정확성이 최우선이다. 사이트 OCR은 없고 원본 사진 자체를 직접 읽는다.
+${ortho}
+중요 절차: (1) 원문을 한 번 전사한다. (2) 사진을 처음부터 다시 훑으며 각 term을 문자 단위로 두 번째 대조한다. (3) 한국어 뜻과 같은 행/문맥인지 다시 확인한다.
+사전에 있을 법하다는 이유로 철자나 형태를 고치지 않는다. 불확실한 한 글자라도 있으면 confidence를 0.88 이하로 낮추고 warnings에 정확히 어떤 부분이 흐린지 적는다.
+지문에서 실제 문맥상 중요한 어휘를 items에 넣고 meanings는 한국어로 쓴다. 동의어·반의어·파생/관련 형태는 확실한 경우에만 소수 추가한다.
+출처:${source||"(없음)"}
+JSON만 출력:
+{"title":"${c.name} 자료","summary":"핵심 한국어 1~2문장","items":[{"term":"원문 그대로의 ${c.name} 표제어/표현","meanings":["문맥상 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"passage","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"${c.name} 원문 문자 단위 2중 대조 완료"}`;
+
+  return `너는 ${c.name} 단어장 사진을 옮기는 초정밀 전사기다. 사용자는 네 철자 오류를 알아채기 어려울 수 있으므로 속도보다 정확도를 우선한다. 사이트 OCR은 없다.
+${ortho}
+왼쪽(또는 표제어 열)의 ${c.name}와 오른쪽 한국어 뜻을 반드시 같은 가로줄끼리 대응한다.
+정확도 절차: 먼저 표제어 열만 위→아래로 전사하고 행 수를 센다. 다음 한국어 뜻 열을 별도로 읽는다. 마지막으로 사진을 처음부터 다시 보며 각 표제어를 문자 단위로 두 번째 대조하고 같은 행의 뜻과 묶는다.
+보이는 형태를 사전형, 더 흔한 표현, 현대 표기로 임의 교정하지 않는다. 애매하면 추측하지 말고 confidence를 0.88 이하로 낮추며 warnings에 위치와 의심 문자를 적는다.
+한국어 뜻은 같은 줄에 실제 적힌 뜻만 넣는다. 번호·별표·페이지 장식은 단어로 만들지 않는다.
+동의어·반의어·파생어·추가 추천어는 이 전사 단계에서는 임의 생성하지 않는다. 원문 정확 복사가 최우선이다.
+출처:${source||"(없음)"}
+JSON만 출력:
+{"title":"${c.name} 사진 단어장","summary":"","items":[{"term":"사진 원문 그대로의 ${c.name} 단어/표현","meanings":["같은 줄의 한국어 뜻"],"partOfSpeech":"","context":"","synonyms":[],"antonyms":[],"derivatives":[],"importance":1,"confidence":0.95,"page":1,"sourceType":"wordlist","sourceLabel":${JSON.stringify(source)}}],"extraItems":[],"warnings":[],"corrections":[],"verificationNote":"${c.name} 원문 문자 단위 2중 대조 완료"}`;
 }
 function singlePhotoAccuracyPrompt(pageNo){
+  const c=langCfg();
+  const common=`이 요청에는 ${pageNo}번째 사진 한 장만 있다.
+정확도 절차:
+1. 표제어 열만 위→아래로 읽어 행 수를 파악한다.
+2. 한국어 뜻 열을 별도로 위→아래로 읽는다.
+3. 마지막에 같은 수평선/같은 행끼리 다시 대조해 term과 meaning을 묶는다.
+4. 철자가 흐리면 문맥이나 사전 지식으로 상상해서 채우지 말고 confidence를 낮추며 warnings에 적는다.
+5. 한 행을 건너뛰거나 두 행을 합치지 않았는지 마지막에 다시 검사한다.
+6. page 필드는 모든 item에 ${pageNo}를 넣는다.`;
+  const extra=isMinorMode()?`
+7. ${c.name} 원문을 사진의 첫 항목부터 끝 항목까지 문자 단위로 한 번 더 독립적으로 대조한다.
+8. ${minorOrthographyRules()}
+9. 조금이라도 애매한 표기는 confidence 0.88 이하 + warnings로 표시한다. 사용자가 모를 수 있으니 확신 없는 철자를 확정하지 마라.`:"";
   return `${extractionPrompt()}
 
-이 요청에는 ${pageNo}번째 사진 한 장만 있다.
-정확도 절차:
-1. 먼저 왼쪽 영어 열만 위→아래로 읽어 행 수를 파악한다.
-2. 그 다음 오른쪽 한국어 열만 위→아래로 읽는다.
-3. 마지막에 같은 수평선/같은 행끼리 다시 대조해 term과 meaning을 묶는다.
-4. 철자가 흐리면 문맥으로 상상해서 채우지 말고 confidence를 0.75 이하로 낮춘다.
-5. 한 행을 건너뛰거나 두 행을 합치지 않았는지 마지막에 다시 검사한다.
-6. page 필드는 모든 item에 ${pageNo}를 넣는다.
+${common}${extra}
 JSON 이외에는 아무것도 출력하지 마라.`;
 }
 
@@ -1226,7 +1343,7 @@ $("#analyzeBtn").onclick=async()=>{
   const btn=$("#analyzeBtn");
   btn.disabled=true;
   $("#extractPanel").classList.add("hidden");
-  startProgress("analysis","사진 확인 중","정확도 우선 모드로 페이지별 인식을 준비하고 있어.",3,90);
+  startProgress("analysis",isMinorMode()?`${langCfg().name} 정밀 확인 중`:"사진 확인 중",isMinorMode()?"부전공어 전용 문자 단위 2중 대조를 준비하고 있어.":"정확도 우선 모드로 페이지별 인식을 준비하고 있어.",3,90);
   try{
     const cached=getPhotoCache();
     if(cached){
@@ -1259,13 +1376,13 @@ $("#analyzeBtn").onclick=async()=>{
     for(let i=0;i<S.photos.length;i++){
       const photo=S.photos[i];
       const pct=25+Math.round((i/Math.max(1,S.photos.length))*55);
-      setProgress("analysis",pct,`저비용 인식 ${i+1}/${S.photos.length}`,`${photo.name} · Luna로 먼저 정확하게 읽는 중`);
+      setProgress("analysis",pct,isMinorMode()?`${langCfg().name} 정밀 인식 ${i+1}/${S.photos.length}`:`저비용 인식 ${i+1}/${S.photos.length}`,`${photo.name} · ${isMinorMode()?"문자·악센트·기호를 2중 대조":"Luna로 먼저 정확하게 읽는 중"}`);
 
       const lunaResult=await openai({
         model:taskModel("photo"),
         reasoning:{effort:"none"},
         text:photoStructuredText(),
-        max_output_tokens:S.mode==="wordlist"?2400:3000,
+        max_output_tokens:isMinorMode()?(S.mode==="wordlist"?3200:3800):(S.mode==="wordlist"?2400:3000),
         input:[{role:"user",content:[
           {type:"input_text",text:singlePhotoAccuracyPrompt(i+1)},
           {type:"input_image",image_url:photo.data,detail:"high"}
@@ -1275,7 +1392,7 @@ $("#analyzeBtn").onclick=async()=>{
       let d=normalizeExtractedData(parseAIJSON(responseText(lunaResult)));
       consumePhotoUnit(1);
 
-      d.verificationNote="Luna 기본 인식 완료";
+      d.verificationNote=isMinorMode()?`${langCfg().name} 전용 정밀 규칙 · 문자 단위 2중 대조 완료`:"Luna 기본 인식 완료";
 
       if(!merged.summary&&d.summary)merged.summary=d.summary;
       merged.items.push(...(d.items||[]).map(x=>({...x,page:i+1})));
@@ -1300,11 +1417,11 @@ $("#analyzeBtn").onclick=async()=>{
     S.extracted=forceSourceFolder(normalizeExtractedData(merged),requestedFolder);
     S.extracted.webVerified=false;
     S.extracted.usedWebSearch=false;
-    S.extracted.verificationNote="Luna 기본 인식 완료 · Terra 자동 호출 0회";
+    S.extracted.verificationNote=isMinorMode()?`${langCfg().name} 전용 정밀 인식 완료 · Terra 자동 호출 0회`:"Luna 기본 인식 완료 · Terra 자동 호출 0회";
 
     putPhotoCache(S.extracted);
     renderExtract();bindPickEditors();
-    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개 · Luna만 사용 · Terra 자동 호출 0회`);
+    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개 · ${isMinorMode()?langCfg().name+" 문자 단위 2중 대조 · ":""}Luna 사용 · Terra 자동 호출 0회`);
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1000);
     $("#extractPanel").classList.remove("hidden");
@@ -1331,7 +1448,7 @@ async function runManualPrecisionAnalysis(){
       const photo=S.photos[i];
       setProgress("analysis",15+Math.round((i/Math.max(1,S.photos.length))*70),`정밀 재검사 ${i+1}/${S.photos.length}`,`${photo.name} · Terra 수동 분석`);
       const result=await openai({
-        model:taskModel("photo_precision"),reasoning:{effort:"none"},text:photoStructuredText(),max_output_tokens:S.mode==="wordlist"?2600:3200,
+        model:taskModel("photo_precision"),reasoning:{effort:"none"},text:photoStructuredText(),max_output_tokens:isMinorMode()?(S.mode==="wordlist"?3600:4200):(S.mode==="wordlist"?2600:3200),
         input:[{role:"user",content:[{type:"input_text",text:`${singlePhotoAccuracyPrompt(i+1)}\n이 요청은 사용자가 직접 선택한 정밀 재검사다. 원본 사진을 매우 보수적으로 다시 대조하고, 애매하면 추측하지 마라.`},{type:"input_image",image_url:photo.data,detail:"high"}]}]
       },{prefix:"analysis",timeoutMs:65000,retries:0,precision:true});
       const d=normalizeExtractedData(parseAIJSON(responseText(result)));
@@ -1362,10 +1479,10 @@ function pick(x,key,checked){
       <b>${esc(x.term||"")}</b>
       <small>${esc((x.meanings||[]).join(", "))}</small>
       ${x.context?`<small>${esc(x.context)}</small>`:""}
-      ${Number(x.confidence||1)<0.8?`<small class="confidence-warn">⚠ 글씨 확인 필요 · 직접 수정 권장</small>`:""}
+      ${Number(x.confidence||1)<(isMinorMode()?0.9:0.8)?`<small class="confidence-warn">⚠ ${isMinorMode()?langCfg().name+" 원문 재확인 권장":"글씨 확인 필요 · 직접 수정 권장"}</small>`:""}
       ${relText(x)?`<small>${esc(relText(x))}</small>`:""}
       <div class="pick-editor hidden" data-editor="${key}">
-        <input class="input" data-edit-term="${key}" value="${esc(x.term||"")}" placeholder="영어 단어/표현">
+        <input class="input" data-edit-term="${key}" value="${esc(x.term||"")}" placeholder="${esc(langCfg().name)} 단어/표현">
         <input class="input" data-edit-meaning="${key}" value="${esc((x.meanings||[]).join(" / "))}" placeholder="한국어 뜻">
         <div class="pick-editor-actions">
           <button type="button" class="save" data-save-edit="${key}">저장</button>
@@ -1422,7 +1539,7 @@ function bindPickEditors(){
       if(!item)return;
       const term=$(`[data-edit-term="${key}"]`)?.value.trim()||"";
       const meaningText=$(`[data-edit-meaning="${key}"]`)?.value.trim()||"";
-      if(!term)return toast("영어 단어를 입력해줘.");
+      if(!term)return toast(`${langCfg().name} 단어를 입력해줘.`);
       if(!meaningText)return toast("한국어 뜻을 입력해줘.");
       const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
       item.term=term;
@@ -1633,8 +1750,8 @@ function speakEnglish(text){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
-    u.lang="en-US";
-    u.rate=.84;
+    u.lang=langCfg().tts;
+    u.rate=(S.studyLang==="ja"||S.studyLang==="zh")?0.78:0.84;
     speechSynthesis.speak(u);
   }catch{}
 }
@@ -1766,7 +1883,8 @@ function renderTest(){
   }
   if(S.testIndex>=S.testQueue.length){toast(`테스트 완료 ${S.testCorrect}/${S.testQueue.length}`);show("home");return}
   const w=S.testQueue[S.testIndex];$("#testNo").textContent=`${S.testIndex+1} / ${S.testQueue.length}`;$("#testScore").textContent=`${S.testCorrect} correct`;
-  if(S.testMode==="meaning"){$("#promptLabel").textContent="이 단어의 뜻은?";$("#question").textContent=w.term;$("#answer").placeholder="한국어 뜻 입력"}else{$("#promptLabel").textContent="이 뜻의 영어 단어는?";$("#question").textContent=w.meanings[0]||"";$("#answer").placeholder="영어 단어 입력"}
+  const c=langCfg();
+  if(S.testMode==="meaning"){$("#promptLabel").textContent=`이 ${c.name} 단어의 뜻은?`;$("#question").textContent=w.term;$("#answer").placeholder="한국어 뜻 입력"}else{$("#promptLabel").textContent=`이 뜻의 ${c.name} 단어는?`;$("#question").textContent=w.meanings[0]||"";$("#answer").placeholder=`${c.name} 단어 입력`}
   $("#answer").value="";
   $("#answer").disabled=false;
   $("#gradeBtn").disabled=false;
@@ -1799,8 +1917,8 @@ $("#gradeBtn").onclick=async()=>{
           d=cached;
         }else{
           if(!needApi())throw Error("AI 연결 필요");
-          const prompt=`영어 뜻 테스트 채점.
-단어:${w.term}
+          const prompt=`${langCfg().name} 뜻 테스트 채점.
+원어 단어:${w.term}
 등록 뜻:${JSON.stringify(w.meanings)}
 문맥:${w.context||"(없음)"}
 학생 답:${a}
@@ -2108,11 +2226,11 @@ $("#folderWordEditSave").onclick=()=>{
   const meaningText=String($("#folderEditMeaning").value||"").trim();
   const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
 
-  if(!term)return toast("영어 단어를 입력해줘.");
+  if(!term)return toast(`${langCfg().name} 단어를 입력해줘.`);
   if(!meanings.length)return toast("한국어 뜻을 하나 이상 입력해줘.");
 
   const duplicate=S.words.find(x=>x.id!==w.id&&norm(x.term)===norm(term));
-  if(duplicate)return toast("이미 같은 영어 단어가 단어장에 있어.");
+  if(duplicate)return toast(`이미 같은 ${langCfg().name} 단어가 단어장에 있어.`);
 
   // Only correct the content. Keep all study history/statistics untouched.
   w.term=term;
@@ -2238,11 +2356,17 @@ function renderLibrary(){
   $$("[data-del]").forEach(b=>b.onclick=()=>{S.words=S.words.filter(x=>x.id!==b.dataset.del);save();renderLibrary()});
 }
 $("#search").oninput=renderLibrary;$$(".filter").forEach(b=>b.onclick=()=>{$$(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.filter=b.dataset.filter;renderLibrary()});
-$("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:5,words:S.words,meta:S.meta,folders:S.folders},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`VocabWalk-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};
-$("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");S.words=d.words;S.meta=d.meta||S.meta;S.folders=Array.isArray(d.folders)?d.folders:S.folders;migrate();save();renderLibrary();toast(`${S.words.length}개 복원`)}catch(err){toast(err.message)}};
-$("#clearBtn").onclick=()=>{if(confirm("정말 모든 단어와 학습 기록을 삭제할까?")){S.words=[];S.meta={correct:0,wrong:0,lastStudy:null,streak:0};S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
+$("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:6,studyLang:S.studyLang,languageName:langCfg().name,words:S.words,meta:S.meta,folders:S.folders},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`VocabWalk-${S.studyLang}-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};
+$("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");const backupLang=d.studyLang?validStudyLang(d.studyLang):"en";if(backupLang!==S.studyLang&&!confirm(`이 백업은 ${STUDY_LANGS[backupLang].name} 모드 데이터야. 현재 ${langCfg().name} 모드에 넣으면 언어가 섞일 수 있어. 그래도 불러올까?`))return;S.words=d.words;S.meta=d.meta||S.meta;S.folders=Array.isArray(d.folders)?d.folders:S.folders;migrate();save();renderLibrary();toast(`${langCfg().name} 모드에 ${S.words.length}개 복원`)}catch(err){toast(err.message)}finally{e.target.value=""}};
+$("#clearBtn").onclick=()=>{if(confirm(`정말 ${langCfg().name} 모드의 모든 단어와 학습 기록을 삭제할까? 다른 언어 모드는 지워지지 않아.`)){S.words=[];S.meta={correct:0,wrong:0,lastStudy:null,streak:0};S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
 
-$("#sampleBtn").onclick=()=>{const a=[{term:"reinforce",meanings:["강화하다","보강하다"],partOfSpeech:"v.",synonyms:["strengthen","bolster"],antonyms:["weaken"],derivatives:["reinforcement"],sourceType:"sample",sourceLabel:"샘플"},{term:"undermine",meanings:["약화시키다","훼손하다"],partOfSpeech:"v.",synonyms:["weaken","impair"],sourceType:"sample",sourceLabel:"샘플"},{term:"compelling",meanings:["설득력 있는","매우 흥미로운"],partOfSpeech:"adj.",synonyms:["convincing","persuasive"],sourceType:"sample",sourceLabel:"샘플"}];let n=0;a.forEach(x=>{if(addWord(x))n++});save();toast(`샘플 ${n}개 추가`)};
+$("#sampleBtn").onclick=()=>{const samples={
+  en:[{term:"reinforce",meanings:["강화하다","보강하다"],partOfSpeech:"v.",synonyms:["strengthen","bolster"],antonyms:["weaken"],derivatives:["reinforcement"]},{term:"undermine",meanings:["약화시키다","훼손하다"],partOfSpeech:"v."},{term:"compelling",meanings:["설득력 있는","매우 흥미로운"],partOfSpeech:"adj."}],
+  ru:[{term:"помогать",meanings:["돕다"],partOfSpeech:"гл."},{term:"важный",meanings:["중요한"],partOfSpeech:"прил."},{term:"возможность",meanings:["가능성","기회"],partOfSpeech:"сущ."}],
+  ja:[{term:"大切",meanings:["소중함","중요함"]},{term:"助ける",meanings:["돕다"]},{term:"機会",meanings:["기회"]}],
+  fr:[{term:"important",meanings:["중요한"],partOfSpeech:"adj."},{term:"aider",meanings:["돕다"],partOfSpeech:"v."},{term:"possibilité",meanings:["가능성","기회"],partOfSpeech:"n."}],
+  zh:[{term:"重要",meanings:["중요하다","중요한"]},{term:"帮助",meanings:["돕다","도움"]},{term:"机会",meanings:["기회"]}]
+};const a=(samples[S.studyLang]||samples.en).map(x=>({...x,sourceType:"sample",sourceLabel:"샘플"}));let n=0;a.forEach(x=>{if(addWord(x))n++});save();toast(`${langCfg().name} 샘플 ${n}개 추가`)};
 
 /* PWA install */
 let deferredPrompt=null;
@@ -2263,11 +2387,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();renderBetaStatus();if(!S.betaCode)setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();updateStudyLanguageUI();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();renderBetaStatus();if(!S.betaCode)setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=080",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=081",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
