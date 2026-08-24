@@ -1,12 +1,16 @@
-const CACHE="vocabwalk-v8-2-github-worker";
+const CACHE="vocabwalk-v8-3-icon";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=082",
-  "./app.js?v=082",
+  "./styles.css?v=083",
+  "./app.js?v=083",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/icon-maskable-192.png",
+  "./icons/icon-maskable-512.png",
+  "./icons/icon-180.png",
+  "./icons/icon-32.png"
 ];
 
 self.addEventListener("install",event=>{

@@ -556,3 +556,12 @@ API 비용 절약 패치.
 - 수정 후 해당 결과만 즉시 다시 렌더링하고 선택 상태 유지
 - 영어 모드에서도 동일한 안정적인 수정창 사용
 - Cloudflare Worker 변경 없음
+
+
+## BUILD 083 — new VocabWalk icon
+- 흰색 배경 + 검은색 V 모던 아이콘 적용
+- Android/Samsung launcher용 full-bleed maskable 192/512 아이콘 추가
+- 홈 화면 원형/둥근 마스크에서 배경이 끝까지 차도록 외곽 여백 제거
+- Apple touch icon 180x180 적용
+- favicon 32x32 적용
+- 투명 배경 V 로고(`icons/icon-transparent-512.png`)도 포함
