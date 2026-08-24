@@ -1,6 +1,9 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v3",K_API_STATS="vw_api_stats_v1",K_API_MONTH="vw_api_month_v1",K_FOLDERS="vw_source_folders_v1";
-const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_LEGACY_API="vw_api_v4",K_BETA="vw_beta_access_v1",K_SERVER="vw_beta_server_v1",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v4",K_API_STATS="vw_api_stats_v1",K_API_MONTH="vw_api_month_v1",K_FOLDERS="vw_source_folders_v1";
+const savedBeta=load(K_BETA,{code:"",label:""});
+const savedServer=String(localStorage.getItem(K_SERVER)||"").trim();
+// BUILD 077: remove any browser-saved OpenAI key from older personal-test builds.
+localStorage.removeItem(K_LEGACY_API);
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
 const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
 const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
@@ -9,7 +12,7 @@ const apiMonthSaved=load(K_API_MONTH,{month:"",photoUsed:0,calls:0,cacheHits:0,i
 const folderSaved=load(K_FOLDERS,[]);
 const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
-  apiKey:savedApi.apiKey||"",model:savedApi.model||"gpt-5.6-terra",
+  betaCode:savedBeta.code||"",betaLabel:savedBeta.label||"",serverUrl:savedServer,
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,reviewRangeMode:"all",reviewSource:null,
   testMode:"meaning",testRangeMode:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
@@ -26,6 +29,32 @@ function now(){return Date.now()}function day(n){return n*86400000}
 function norm(s){return String(s||"").toLowerCase().trim().replace(/\s+/g," ")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function uid(){return crypto.randomUUID?.()||Date.now()+"_"+Math.random().toString(36).slice(2)}
+function normalizeServerUrl(raw){
+  let s=String(raw||"").trim();
+  if(!s)return "";
+  if(!/^https:\/\//i.test(s))s="https://"+s;
+  try{
+    const u=new URL(s);
+    if(u.protocol!=="https:")throw Error();
+    u.pathname=u.pathname.replace(/\/+$/g,"");
+    u.search="";u.hash="";
+    return u.toString().replace(/\/$/,"");
+  }catch{return ""}
+}
+function apiEndpoint(path){
+  const base=normalizeServerUrl(S.serverUrl);
+  if(!base)throw Error("AI 서버 주소를 먼저 연결해줘.");
+  return base+path;
+}
+(function absorbServerLink(){
+  try{
+    const u=new URL(location.href),incoming=normalizeServerUrl(u.searchParams.get("server")||"");
+    if(!incoming)return;
+    S.serverUrl=incoming;localStorage.setItem(K_SERVER,incoming);
+    u.searchParams.delete("server");history.replaceState(null,"",u.pathname+(u.search?u.search:"")+(u.hash||""));
+  }catch{}
+})();
+
 function shuffle(a){
   const out=[...a];
   for(let i=out.length-1;i>0;i--){
@@ -403,15 +432,59 @@ function renderHome(){
   else{list.className="mini-list";list.innerHTML=due.sort((a,b)=>weakness(b)-weakness(a)).slice(0,5).map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`).join("")}
 }
 
-$("#apiBtn").onclick=()=>{renderApiUsage();$("#apiModal").classList.remove("hidden");$("#apiKeyInput").value=S.apiKey;$("#modelInput").value=S.model};
-$("#closeApiBtn").onclick=()=>$("#apiModal").classList.add("hidden");
-$("#saveApiBtn").onclick=()=>{
-  const k=$("#apiKeyInput").value.trim(),m=$("#modelInput").value.trim()||"gpt-5.6-terra";
-  if(k.length<10)return toast("API 키를 확인해줘.");
-  S.apiKey=k;S.model=m;localStorage.setItem(K_API,JSON.stringify({apiKey:k,model:m}));$("#apiDot").classList.add("on");$("#apiModal").classList.add("hidden");toast("저장 완료 · 다음부터 자동 연결");
+$("#apiBtn").onclick=()=>{
+  renderApiUsage();renderBetaStatus();
+  $("#apiModal").classList.remove("hidden");
+  $("#betaCodeInput").value=S.betaCode||"";
+  $("#serverUrlInput").value=S.serverUrl||"";
 };
-$("#forgetApiBtn").onclick=()=>{localStorage.removeItem(K_API);S.apiKey="";$("#apiKeyInput").value="";$("#apiDot").classList.remove("on");toast("저장 키 삭제 완료")};
-function needApi(){if(S.apiKey)return true;$("#apiModal").classList.remove("hidden");toast("처음 한 번 API 키를 넣어줘.");return false}
+$("#closeApiBtn").onclick=()=>$("#apiModal").classList.add("hidden");
+function renderBetaStatus(){
+  const el=$("#betaConnectStatus");if(!el)return;
+  const hasServer=!!normalizeServerUrl(S.serverUrl),hasCode=!!S.betaCode;
+  if(hasServer&&hasCode){el.textContent=`연결됨${S.betaLabel?` · ${S.betaLabel}`:""}`;el.classList.add("ok");$("#apiDot").classList.add("on")}
+  else if(hasServer){el.textContent="서버 연결됨 · 초대코드를 입력해줘.";el.classList.remove("ok");$("#apiDot").classList.remove("on")}
+  else{el.textContent="AI 서버 주소와 초대코드를 연결해줘.";el.classList.remove("ok");$("#apiDot").classList.remove("on")}
+}
+async function verifyBetaCode(server,code){
+  const r=await fetch(server+"/ping",{method:"POST",headers:{"Content-Type":"application/json","X-VocabWalk-Invite":code},body:"{}"});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(d?.error||"서버 주소 또는 초대코드를 확인해줘.");
+  return d;
+}
+$("#saveApiBtn").onclick=async()=>{
+  const btn=$("#saveApiBtn"),code=$("#betaCodeInput").value.trim(),server=normalizeServerUrl($("#serverUrlInput").value);
+  if(!server)return toast("AI 서버 주소를 확인해줘.");
+  if(code.length<4)return toast("초대코드를 확인해줘.");
+  btn.disabled=true;btn.textContent="연결 확인 중…";
+  try{
+    const d=await verifyBetaCode(server,code);
+    S.serverUrl=server;S.betaCode=code;S.betaLabel=d.label||"";
+    localStorage.setItem(K_SERVER,S.serverUrl);
+    localStorage.setItem(K_BETA,JSON.stringify({code:S.betaCode,label:S.betaLabel}));
+    renderBetaStatus();$("#apiModal").classList.add("hidden");toast("비공개 베타 연결 완료 ✅");
+  }catch(e){toast(e.message);$("#betaConnectStatus").textContent=e.message;$("#betaConnectStatus").classList.remove("ok")}
+  finally{btn.disabled=false;btn.textContent="초대코드 연결"}
+};
+$("#forgetApiBtn").onclick=()=>{
+  localStorage.removeItem(K_BETA);localStorage.removeItem(K_SERVER);
+  S.betaCode="";S.betaLabel="";S.serverUrl="";
+  $("#betaCodeInput").value="";$("#serverUrlInput").value="";renderBetaStatus();toast("베타 연결 해제 완료");
+};
+$("#copyBetaLinkBtn").onclick=async()=>{
+  const server=normalizeServerUrl($("#serverUrlInput").value||S.serverUrl);
+  if(!server)return toast("먼저 Worker 주소를 넣어줘.");
+  const u=new URL(location.href);u.search="";u.hash="";u.searchParams.set("server",server);
+  try{await navigator.clipboard.writeText(u.toString());toast("친구용 링크 복사 완료 🔗")}
+  catch{prompt("이 링크를 복사해서 친구에게 보내줘.",u.toString())}
+};
+function needApi(){
+  if(normalizeServerUrl(S.serverUrl)&&S.betaCode)return true;
+  renderBetaStatus();$("#apiModal").classList.remove("hidden");
+  $("#serverUrlInput").value=S.serverUrl||"";
+  toast(S.serverUrl?"초대코드를 먼저 연결해줘.":"AI 서버 주소를 먼저 연결해줘.");
+  return false;
+}
 
 const MONTHLY_PHOTO_LIMIT=150;
 const MODEL_PRICES={"gpt-5.6-luna":{input:.20,cached:.02,output:1.20,cacheWrite:.25},"gpt-5.6-terra":{input:2.00,cached:.20,output:12.00,cacheWrite:2.50}};
@@ -671,29 +744,11 @@ function photoStructuredText(){
     }
   };
 }
-function pageNeedsTerraCheck(d){
-  if(!d || !Array.isArray(d.items) || !d.items.length)return true;
-  if((d.warnings||[]).length>0)return true;
-  return d.items.some(x=>Number(x.confidence||0)<0.82 || !String(x.term||"").trim() || !(x.meanings||[]).length);
-}
-function terraVerifyPrompt(pageNo,lunaData){
-  const uncertain=(lunaData.items||[])
-    .filter(x=>Number(x.confidence||0)<0.88)
-    .map(x=>({term:x.term,meanings:x.meanings,confidence:x.confidence}));
-  return `${singlePhotoAccuracyPrompt(pageNo)}
-이 사진은 저비용 1차 인식에서 불확실 판정이 나서 정밀 재검사하는 단계다.
-1차 결과 중 특히 아래 항목을 원본 사진과 다시 대조하라:
-${JSON.stringify(uncertain)}
-원본 사진이 최우선이다. 1차 결과가 틀렸으면 수정하고, 누락된 행이 있으면 추가하라.
-전체 페이지를 최종본으로 다시 출력하라.`;
+function taskModel(task){
+  if(task==="photo_precision") return "gpt-5.6-terra";
+  return "gpt-5.6-luna";
 }
 
-function taskModel(task){
-  if(task==="photo") return "gpt-5.6-luna";
-  if(task==="photo_verify") return "gpt-5.6-terra";
-  if(task==="fast") return "gpt-5.6-luna";
-  return S.model||"gpt-5.6-luna";
-}
 const progressTimers={};
 function setProgress(prefix,pct,label,detail){
   pct=Math.max(0,Math.min(100,Math.round(pct)));
@@ -705,42 +760,38 @@ function startProgress(prefix,label,detail,start=3,cap=88){
   progressTimers[prefix]=setInterval(()=>{if(pct>=cap)return;const step=pct<35?2:pct<65?1.2:.55;pct=Math.min(cap,pct+step);setProgress(prefix,pct)},650);
 }
 function stopProgress(prefix){clearInterval(progressTimers[prefix]);delete progressTimers[prefix]}
-async function openai(body,{prefix=null,timeoutMs=75000,retries=0}={}){
-  if(!needApi())throw Error("API 키 필요");
+async function openai(body,{prefix=null,timeoutMs=75000,retries=0,precision=false}={}){
+  if(!needApi())throw Error("초대코드 필요");
   let lastErr;
   for(let attempt=0;attempt<=retries;attempt++){
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       noteApiCall();
-      const r=await fetch("https://api.openai.com/v1/responses",{
+      const r=await fetch(apiEndpoint("/ai"),{
         method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":"Bearer "+S.apiKey},
-        body:JSON.stringify(body),
+        headers:{"Content-Type":"application/json","X-VocabWalk-Invite":S.betaCode},
+        body:JSON.stringify({mode:precision?"precision":"standard",request:body}),
         signal:controller.signal
       });
       clearTimeout(timer);
       const d=await r.json().catch(()=>({}));
-      if(r.ok){recordResponseUsage(body.model||"unknown",d);return d;}
-      const msg=d?.error?.message||`API 오류 ${r.status}`;
+      if(r.ok){recordResponseUsage(d._vocabwalk_model||taskModel(precision?"photo_precision":"fast"),d);return d;}
+      const msg=d?.error||d?.error?.message||`AI 서버 오류 ${r.status}`;
       const retryable=r.status===429||r.status===408||r.status===500||r.status===502||r.status===503||r.status===504;
       if(!retryable||attempt>=retries)throw Error(msg);
-      const retryAfter=Number(r.headers.get("retry-after")||0);
-      const wait=Math.max(retryAfter*1000,900*Math.pow(2,attempt)+Math.random()*350);
-      if(prefix)setProgress(prefix,Math.min(86,55+attempt*10),`잠깐 대기 · 자동 재시도 ${attempt+1}/${retries}`,`API가 바쁜 것 같아. ${Math.ceil(wait/1000)}초 후 다시 시도해.`);
+      const wait=900*Math.pow(2,attempt)+Math.random()*350;
+      if(prefix)setProgress(prefix,Math.min(86,55+attempt*10),`잠깐 대기 · 재시도 ${attempt+1}/${retries}`,`${Math.ceil(wait/1000)}초 후 다시 시도해.`);
       await sleep(wait);lastErr=Error(msg);continue;
     }catch(e){
-      clearTimeout(timer);
-      lastErr=e;
+      clearTimeout(timer);lastErr=e;
       const retryable=e.name==="AbortError"||/network|fetch|failed/i.test(String(e.message||e));
       if(!retryable||attempt>=retries)break;
-      const wait=900*Math.pow(2,attempt)+Math.random()*300;
-      if(prefix)setProgress(prefix,Math.min(86,52+attempt*10),`연결 재시도 ${attempt+1}/${retries}`,e.name==="AbortError"?"응답이 늦어서 자동으로 다시 요청 중이야.":"네트워크 연결을 다시 시도하고 있어.");
-      await sleep(wait);
+      await sleep(900*Math.pow(2,attempt)+Math.random()*300);
     }
   }
   if(lastErr?.name==="AbortError")throw Error("응답 시간이 너무 길어 중단했어. 사진 수를 줄이거나 잠시 뒤 다시 해줘.");
-  throw lastErr||Error("API 요청 실패");
+  throw lastErr||Error("AI 서버 요청 실패");
 }
 
 /* Multiple photo upload + drag/drop */
@@ -1056,8 +1107,8 @@ async function prepareImageForHighDetail(file){
     const pixels=decoded.width*decoded.height;
     const scale=Math.min(
       1,
-      2800/Math.max(decoded.width,decoded.height),
-      Math.sqrt(5000000/Math.max(1,pixels))
+      2000/Math.max(decoded.width,decoded.height),
+      Math.sqrt(3000000/Math.max(1,pixels))
     );
 
     const c=document.createElement("canvas");
@@ -1073,7 +1124,7 @@ async function prepareImageForHighDetail(file){
     ctx.drawImage(decoded.source,0,0,c.width,c.height);
     try{ctx.filter="none"}catch{}
 
-    return await canvasToData(c,.94);
+    return await canvasToData(c,.84);
   }finally{
     decoded.close?.();
   }
@@ -1182,7 +1233,6 @@ $("#analyzeBtn").onclick=async()=>{
       webVerified:false,usedWebSearch:false
     };
 
-    let terraChecks=0;
     for(let i=0;i<S.photos.length;i++){
       const photo=S.photos[i];
       const pct=25+Math.round((i/Math.max(1,S.photos.length))*55);
@@ -1202,31 +1252,7 @@ $("#analyzeBtn").onclick=async()=>{
       let d=normalizeExtractedData(parseAIJSON(responseText(lunaResult)));
       consumePhotoUnit(1);
 
-      if(pageNeedsTerraCheck(d)){
-        terraChecks++;
-        setProgress(
-          "analysis",
-          Math.min(90,pct+8),
-          `정밀 확인 ${i+1}/${S.photos.length}`,
-          "글씨가 불확실한 사진만 Terra로 한 번 더 확인하고 있어."
-        );
-
-        const terraResult=await openai({
-          model:taskModel("photo_verify"),
-          reasoning:{effort:"none"},
-          text:photoStructuredText(),
-          max_output_tokens:S.mode==="wordlist"?2600:3200,
-          input:[{role:"user",content:[
-            {type:"input_text",text:terraVerifyPrompt(i+1,d)},
-            {type:"input_image",image_url:photo.data,detail:"high"}
-          ]}]
-        },{prefix:"analysis",timeoutMs:65000,retries:0});
-
-        d=normalizeExtractedData(parseAIJSON(responseText(terraResult)));
-        d.verificationNote="불확실 항목 Terra 정밀 재검사 완료";
-      }else{
-        d.verificationNote="Luna 1차 인식으로 충분히 확실";
-      }
+      d.verificationNote="Luna 기본 인식 완료";
 
       if(!merged.summary&&d.summary)merged.summary=d.summary;
       merged.items.push(...(d.items||[]).map(x=>({...x,page:i+1})));
@@ -1234,7 +1260,6 @@ $("#analyzeBtn").onclick=async()=>{
       merged.warnings.push(...(d.warnings||[]).map(w=>`사진 ${i+1}: ${w}`));
       merged.corrections.push(...(d.corrections||[]));
     }
-    merged.terraChecks=terraChecks;
 
     // 같은 영어가 여러 페이지에 반복되면 뜻을 합치고, 첫 등장 순서는 유지한다.
     const byTerm=new Map();
@@ -1252,11 +1277,11 @@ $("#analyzeBtn").onclick=async()=>{
     S.extracted=normalizeExtractedData(merged);
     S.extracted.webVerified=false;
     S.extracted.usedWebSearch=false;
-    S.extracted.verificationNote=merged.terraChecks?`Luna 전체 인식 + 불확실 사진 ${merged.terraChecks}장만 Terra 재검사`:"Luna 인식 완료 · Terra 추가 호출 없음";
+    S.extracted.verificationNote="Luna 기본 인식 완료 · Terra 자동 호출 0회";
 
     putPhotoCache(S.extracted);
     renderExtract();bindPickEditors();
-    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개 · Terra 추가검사 ${merged.terraChecks||0}장 · 자동 재시도 0회`);
+    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개 · Luna만 사용 · Terra 자동 호출 0회`);
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1000);
     $("#extractPanel").classList.remove("hidden");
@@ -1269,6 +1294,41 @@ $("#analyzeBtn").onclick=async()=>{
     btn.disabled=false;
   }
 };
+
+async function runManualPrecisionAnalysis(){
+  if(!S.photos.length||!needApi())return;
+  if(!confirm("정밀 재검사는 Terra를 사용해 기본 Luna보다 모델 단가가 높아. 현재 선택한 사진을 정말 다시 검사할까?"))return;
+  const btn=$("#precisionAnalyzeBtn");btn.disabled=true;btn.textContent="🔎 Terra 정밀 재검사 중…";
+  startProgress("analysis","정밀 재검사","사용자가 요청해서 Terra로 원본 사진을 다시 확인하고 있어.",5,90);
+  try{
+    await prepareSelectedPhotosForApi();
+    const merged={title:S.mode==="passage"?"자료 제목":"사진 단어장",summary:"",items:[],extraItems:[],warnings:[],corrections:[],verificationNote:"Terra 수동 정밀 재검사 완료",webVerified:false,usedWebSearch:false};
+    for(let i=0;i<S.photos.length;i++){
+      const photo=S.photos[i];
+      setProgress("analysis",15+Math.round((i/Math.max(1,S.photos.length))*70),`정밀 재검사 ${i+1}/${S.photos.length}`,`${photo.name} · Terra 수동 분석`);
+      const result=await openai({
+        model:taskModel("photo_precision"),reasoning:{effort:"none"},text:photoStructuredText(),max_output_tokens:S.mode==="wordlist"?2600:3200,
+        input:[{role:"user",content:[{type:"input_text",text:`${singlePhotoAccuracyPrompt(i+1)}\n이 요청은 사용자가 직접 선택한 정밀 재검사다. 원본 사진을 매우 보수적으로 다시 대조하고, 애매하면 추측하지 마라.`},{type:"input_image",image_url:photo.data,detail:"high"}]}]
+      },{prefix:"analysis",timeoutMs:65000,retries:0,precision:true});
+      const d=normalizeExtractedData(parseAIJSON(responseText(result)));
+      if(!merged.summary&&d.summary)merged.summary=d.summary;
+      merged.items.push(...(d.items||[]).map(x=>({...x,page:i+1})));
+      merged.extraItems.push(...(d.extraItems||[]));
+      merged.warnings.push(...(d.warnings||[]).map(w=>`사진 ${i+1}: ${w}`));
+      merged.corrections.push(...(d.corrections||[]));
+    }
+    const byTerm=new Map();
+    for(const item of merged.items){const k=norm(item.term);if(!k)continue;if(!byTerm.has(k))byTerm.set(k,item);else{const old=byTerm.get(k);old.meanings=[...new Set([...(old.meanings||[]),...(item.meanings||[])])];old.confidence=Math.min(Number(old.confidence||1),Number(item.confidence||1));}}
+    merged.items=[...byTerm.values()];
+    S.extracted=normalizeExtractedData(merged);S.extracted.verificationNote="Terra 수동 정밀 재검사 완료";
+    putPhotoCache(S.extracted);renderExtract();bindPickEditors();
+    setProgress("analysis",100,"정밀 재검사 완료",`총 ${S.extracted.items.length}개 · Terra는 이번 버튼을 눌렀을 때만 사용됐어.`);
+    stopProgress("analysis");setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1100);
+    toast("Terra 정밀 재검사 완료");
+  }catch(e){stopProgress("analysis");setProgress("analysis",0,"정밀 재검사 실패",e.message);toast(e.message)}
+  finally{btn.disabled=false;btn.textContent="🔎 정밀 재검사 · Terra (선택)"}
+}
+$("#precisionAnalyzeBtn").onclick=runManualPrecisionAnalysis;
 
 function relText(x){return [x.synonyms?.length?"동의: "+x.synonyms.join(", "):"",x.antonyms?.length?"반의: "+x.antonyms.join(", "):"",x.derivatives?.length?"파생: "+x.derivatives.join(", "):""].filter(Boolean).join(" · ")}
 function pick(x,key,checked){
@@ -2087,11 +2147,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();renderBetaStatus();if(!S.betaCode)setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=075",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=077",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

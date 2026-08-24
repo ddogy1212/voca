@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=075">
+  <link rel="stylesheet" href="./styles.css?v=077">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.7.5 <span class="build-badge">BUILD 075</span></small>
+    <small>VOCABWALK AI · v0.7.7 <span class="build-badge">BUILD 077</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -143,7 +143,7 @@ compelling = 설득력 있는"></textarea>
       <div class="api-progress"><span id="analysisBar"></span></div>
       <small id="analysisDetail">사진을 준비하고 있어.</small>
     </div>
-    <p class="fine">사이트 내부 OCR은 사용하지 않아. 원본 사진을 AI 이미지 입력으로 읽고, 불확실한 사진만 정밀 재검사해.</p>
+    <p class="fine">기본 인식은 저비용 Luna만 사용해. 결과가 이상할 때만 아래 정밀 재검사를 직접 눌러 Terra를 사용해.</p>
 
     <div id="extractPanel" class="panel hidden">
       <div class="section-head no-top">
@@ -155,6 +155,9 @@ compelling = 설득력 있는"></textarea>
       <div id="extractWarnings" class="warn hidden"></div>
       <div id="correctionsBox" class="corrections hidden"></div>
       <div id="mainItems" class="pick-list"></div>
+
+      <button id="precisionAnalyzeBtn" class="big precision-btn" type="button">🔎 정밀 재검사 · Terra (선택)</button>
+      <p class="precision-note">기본 분석보다 모델 단가가 높아. 결과가 이상할 때만 눌러.</p>
 
       <div id="extraBlock" class="hidden">
         <div class="section-head"><h3>✨ 같이 외울 추가 단어</h3></div>
@@ -385,28 +388,36 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">AI SETUP · PERSONAL TEST</span>
-    <h2>API 자동 연결</h2>
-    <p>처음 한 번만 키를 입력하면 이 브라우저에 저장되고 다음 실행부터 자동 연결돼. v0.5는 사진은 Terra, 빠른 추천·채점은 Luna를 우선 사용해서 지연을 줄여.</p>
-    <div class="warn">⚠ 공개/공용 기기에서는 저장하지 마. 정식 서비스 단계에서는 서버 프록시로 키를 숨기는 게 맞아.</div>
+    <span class="eyebrow">PRIVATE BETA · BUILD 077</span>
+    <h2>초대코드로 연결</h2>
+    <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
+    <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
+
     <div class="api-usage-panel">
-      <div class="api-usage-head"><div><span class="eyebrow">MONTHLY USAGE</span><h3>이번 달 API 사용량</h3></div><span id="apiUsageMonth" class="api-month-chip">-</span></div>
+      <div class="api-usage-head"><div><span class="eyebrow">THIS DEVICE</span><h3>이번 달 이 기기 사용량</h3></div><span id="apiUsageMonth" class="api-month-chip">-</span></div>
       <div class="photo-quota-row"><div><b><span id="photoUsedCount">0</span> / 150장</b><small>사진 AI 분석</small></div><strong id="photoRemainingCount">150장 남음</strong></div>
       <div class="api-quota-bar"><span id="photoQuotaBar"></span></div>
       <div class="api-mini-grid">
         <div><b id="apiMonthlyCalls">0</b><span>API 호출</span></div><div><b id="apiMonthlyCacheHits">0</b><span>캐시 절약</span></div>
         <div><b id="apiMonthlyInput">0</b><span>입력 토큰</span></div><div><b id="apiMonthlyOutput">0</b><span>출력 토큰</span></div>
       </div>
-      <div class="api-model-costs"><div><span>Luna</span><b id="apiLunaUsage">0회 · $0.0000</b></div><div><span>Terra</span><b id="apiTerraUsage">0회 · $0.0000</b></div></div>
-      <div class="api-total-cost"><span>이번 달 예상 OpenAI 비용</span><b id="apiEstimatedCost">$0.0000</b></div>
-      <p class="api-cost-note">실제 API 응답의 토큰 사용량으로 계산한 예상치야.</p>
+      <div class="api-model-costs"><div><span>Luna</span><b id="apiLunaUsage">0회 · $0.0000</b></div><div><span>Terra(수동)</span><b id="apiTerraUsage">0회 · $0.0000</b></div></div>
+      <div class="api-total-cost"><span>이 기기 예상 OpenAI 비용</span><b id="apiEstimatedCost">$0.0000</b></div>
+      <p class="api-cost-note">실제 API 응답의 토큰 사용량으로 계산한 추정치야.</p>
     </div>
-    <input id="apiKeyInput" class="input" type="password" placeholder="OpenAI API key">
-    <input id="modelInput" class="input top-gap" value="gpt-5.6-terra" placeholder="기본 모델명">
+
+    <label class="beta-field-label" for="serverUrlInput">AI 서버 주소</label>
+    <input id="serverUrlInput" class="input" type="url" inputmode="url" autocomplete="off" placeholder="https://vocabwalk-xxx.workers.dev">
+    <div class="beta-server-help">친구용 링크로 들어오면 자동 입력돼. 직접 설정할 때만 Worker 주소를 붙여넣으면 돼.</div>
+
+    <label class="beta-field-label" for="betaCodeInput">초대코드</label>
+    <input id="betaCodeInput" class="input" type="password" autocomplete="off" placeholder="친구에게 받은 초대코드">
+    <div id="betaConnectStatus" class="beta-connect-status">아직 연결되지 않았어.</div>
     <div class="two">
-      <button id="saveApiBtn" class="big dark">저장 · 자동연결</button>
-      <button id="forgetApiBtn" class="big">저장 키 삭제</button>
+      <button id="saveApiBtn" class="big dark">초대코드 연결</button>
+      <button id="forgetApiBtn" class="big">연결 해제</button>
     </div>
+    <button id="copyBetaLinkBtn" class="big">🔗 친구용 서버 연결 링크 복사</button>
     <button id="closeApiBtn" class="big">닫기</button>
   </div>
 </div>
@@ -526,6 +537,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=075"></script>
+<script src="./app.js?v=077"></script>
 </body>
 </html>

@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v7-5-api-meter";
+const CACHE="vocabwalk-v7-7-github-worker";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=075",
-  "./app.js?v=075",
+  "./styles.css?v=077",
+  "./app.js?v=077",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

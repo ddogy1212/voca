@@ -950,3 +950,19 @@ button.graduate-btn:disabled{
 .api-model-costs{margin-top:9px;display:grid;gap:5px}.api-model-costs>div{display:flex;justify-content:space-between;gap:10px;font-size:10px}.api-model-costs span{color:var(--muted)}
 .api-total-cost{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:10px}.api-total-cost b{font-size:17px}.api-cost-note{margin:6px 0 0;color:var(--muted);font-size:8.5px;line-height:1.4}
 .photo-quota-hint{text-align:center;color:var(--muted);font-size:9.5px;margin:7px 0 0}.photo-quota-hint.limit{color:#a54842;font-weight:850}#analyzeBtn.quota-blocked{background:#d8d3cc!important;border-color:#d8d3cc!important;color:#888!important}
+
+
+/* BUILD 076 — private beta */
+.beta-security-note{
+  margin:10px 0 12px;padding:11px 12px;border-radius:13px;
+  background:#f2efe9;border:1px solid var(--line);font-size:10px;line-height:1.45;font-weight:750;
+}
+.beta-connect-status{margin:8px 2px 10px;color:var(--muted);font-size:10px}
+.beta-connect-status.ok{color:#17764a;font-weight:850}
+.precision-btn{margin-top:12px!important;background:#fff!important;color:#27231f!important;border:1px solid #cfc8bd!important}
+.precision-note{text-align:center;color:var(--muted);font-size:9px;margin:5px 0 10px}
+
+/* BUILD 077 — GitHub Pages + tiny Worker setup */
+.beta-field-label{display:block;margin:11px 2px 6px;color:var(--muted);font-size:9.5px;font-weight:850}
+.beta-server-help{margin:5px 2px 9px;color:var(--muted);font-size:8.8px;line-height:1.45}
+#serverUrlInput{font-size:12px}

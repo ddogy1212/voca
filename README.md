@@ -476,3 +476,28 @@ API 비용 절약 패치.
 - API 모달에서 이번 달 총 예상 OpenAI 비용 확인
 - 현재 제한은 localStorage 기반. 상용화 시 서버 계정별 제한 필수
 - BUILD 075
+
+
+## v0.7.6 PRIVATE BETA
+- 친구 2~3명 배포용 Vercel 서버 프록시 추가
+- 브라우저 OpenAI API key 완전 제거 + 구버전 localStorage key 자동 삭제
+- 초대코드 인증 (`BETA_INVITE_CODES`)
+- 자동 모델: GPT-5.6 Luna only
+- GPT-5.6 Sol: 0 / 코드에서 제거
+- GPT-5.6 Terra: 사용자가 `정밀 재검사` 버튼을 눌렀을 때만
+- 서버는 OpenAI request model을 직접 강제해 클라이언트가 Sol/Terra를 임의로 선택할 수 없게 제한
+- OpenAI `store:false` 강제
+- 사진 1회 요청당 1장, 출력 토큰 상한 적용
+- 이미지 준비 크기 2000px / 3MP / JPEG 0.84로 비용·전송량 절감
+- Vercel 배포용 `api/`, `package.json`, `vercel.json`, `.env.example` 포함
+- BUILD 076
+
+
+## v0.7.7 — GitHub Pages + Minimal Worker
+- 기존 GitHub Pages 유지
+- Vercel 파일/서버 제거
+- Cloudflare Worker 단일 파일 `worker.js` 추가
+- Worker URL은 앱 설정에서 1회 입력
+- `?server=` 링크를 통해 친구 폰에 Worker 주소 자동 설정
+- Luna 자동 / Terra 수동 / Sol 서버에서 선택 불가
+- OpenAI API key는 Worker Secret에만 저장
