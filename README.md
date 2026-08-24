@@ -463,3 +463,16 @@ API 비용 절약 패치.
 - 일반 의미 테스트의 애매한 답만 Luna 사용 + 기존 판정 캐시 유지
 - 기존 단어/폴더/졸업/학습 기록 유지
 - BUILD 074
+
+
+## v0.7.5 API METER + 150 PHOTO LIMIT
+- 월 150장 사진 AI 분석 제한
+- 캐시 재사용 사진은 한도 차감 0
+- Luna 1차 분석 성공 시 사진 1장 차감
+- Terra 재검사는 같은 사진이라 추가 장수 차감 없음
+- 월 변경 시 자동 초기화
+- Responses API 실제 usage의 input/output/cached/cache-write token 추적
+- Luna / Terra별 호출 수와 예상 비용 표시
+- API 모달에서 이번 달 총 예상 OpenAI 비용 확인
+- 현재 제한은 localStorage 기반. 상용화 시 서버 계정별 제한 필수
+- BUILD 075

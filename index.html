@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=074">
+  <link rel="stylesheet" href="./styles.css?v=075">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.7.4 <span class="build-badge">BUILD 074</span></small>
+    <small>VOCABWALK AI · v0.7.5 <span class="build-badge">BUILD 075</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -137,12 +137,13 @@ compelling = 설득력 있는"></textarea>
     <div id="photoList" class="photo-list hidden"></div>
 
     <button id="analyzeBtn" class="big dark" disabled>AI 사진 인식</button>
+    <p id="photoQuotaHint" class="photo-quota-hint">이번 달 사진 0 / 150장</p>
     <div id="analysisStatus" class="analysis-status hidden">
       <div class="progress-head"><b id="analysisLabel">준비 중</b><strong id="analysisPct">0%</strong></div>
       <div class="api-progress"><span id="analysisBar"></span></div>
       <small id="analysisDetail">사진을 준비하고 있어.</small>
     </div>
-    <p class="fine">사이트 내부 OCR은 사용하지 않아. ① 원본 사진을 AI 이미지 입력으로 인식하고 ② 추출된 철자·뜻을 웹 검색으로 한 번 더 검증한 뒤 결과를 보여줘.</p>
+    <p class="fine">사이트 내부 OCR은 사용하지 않아. 원본 사진을 AI 이미지 입력으로 읽고, 불확실한 사진만 정밀 재검사해.</p>
 
     <div id="extractPanel" class="panel hidden">
       <div class="section-head no-top">
@@ -150,7 +151,7 @@ compelling = 설득력 있는"></textarea>
         <button id="selectAll" class="link">전체 선택</button>
       </div>
       <p id="summary" class="summary hidden"></p>
-      <div id="verifyBadge" class="verified-badge hidden">✓ 웹 검색 검증 완료</div>
+      <div id="verifyBadge" class="verified-badge hidden">✓ AI 재검토 완료</div>
       <div id="extractWarnings" class="warn hidden"></div>
       <div id="correctionsBox" class="corrections hidden"></div>
       <div id="mainItems" class="pick-list"></div>
@@ -388,6 +389,18 @@ compelling = 설득력 있는"></textarea>
     <h2>API 자동 연결</h2>
     <p>처음 한 번만 키를 입력하면 이 브라우저에 저장되고 다음 실행부터 자동 연결돼. v0.5는 사진은 Terra, 빠른 추천·채점은 Luna를 우선 사용해서 지연을 줄여.</p>
     <div class="warn">⚠ 공개/공용 기기에서는 저장하지 마. 정식 서비스 단계에서는 서버 프록시로 키를 숨기는 게 맞아.</div>
+    <div class="api-usage-panel">
+      <div class="api-usage-head"><div><span class="eyebrow">MONTHLY USAGE</span><h3>이번 달 API 사용량</h3></div><span id="apiUsageMonth" class="api-month-chip">-</span></div>
+      <div class="photo-quota-row"><div><b><span id="photoUsedCount">0</span> / 150장</b><small>사진 AI 분석</small></div><strong id="photoRemainingCount">150장 남음</strong></div>
+      <div class="api-quota-bar"><span id="photoQuotaBar"></span></div>
+      <div class="api-mini-grid">
+        <div><b id="apiMonthlyCalls">0</b><span>API 호출</span></div><div><b id="apiMonthlyCacheHits">0</b><span>캐시 절약</span></div>
+        <div><b id="apiMonthlyInput">0</b><span>입력 토큰</span></div><div><b id="apiMonthlyOutput">0</b><span>출력 토큰</span></div>
+      </div>
+      <div class="api-model-costs"><div><span>Luna</span><b id="apiLunaUsage">0회 · $0.0000</b></div><div><span>Terra</span><b id="apiTerraUsage">0회 · $0.0000</b></div></div>
+      <div class="api-total-cost"><span>이번 달 예상 OpenAI 비용</span><b id="apiEstimatedCost">$0.0000</b></div>
+      <p class="api-cost-note">실제 API 응답의 토큰 사용량으로 계산한 예상치야.</p>
+    </div>
     <input id="apiKeyInput" class="input" type="password" placeholder="OpenAI API key">
     <input id="modelInput" class="input top-gap" value="gpt-5.6-terra" placeholder="기본 모델명">
     <div class="two">
@@ -513,6 +526,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=074"></script>
+<script src="./app.js?v=075"></script>
 </body>
 </html>

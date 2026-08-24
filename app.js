@@ -1,10 +1,11 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v3",K_API_STATS="vw_api_stats_v1",K_FOLDERS="vw_source_folders_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v3",K_API_STATS="vw_api_stats_v1",K_API_MONTH="vw_api_month_v1",K_FOLDERS="vw_source_folders_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
 const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
 const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
 const apiStatsSaved=load(K_API_STATS,{date:"",calls:0,cacheHits:0});
+const apiMonthSaved=load(K_API_MONTH,{month:"",photoUsed:0,calls:0,cacheHits:0,inputTokens:0,outputTokens:0,models:{}});
 const folderSaved=load(K_FOLDERS,[]);
 const S={
   words:load(K_WORDS,[]),meta:load(K_META,{correct:0,wrong:0,lastStudy:null,streak:0}),
@@ -14,7 +15,7 @@ const S={
   testMode:"meaning",testRangeMode:"all",testSource:null,testQueue:[],testIndex:0,testCorrect:0,lastGrade:null,
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
-  gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
+  gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,apiMonth:apiMonthSaved,
   folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,folderWordEditId:null,
   filter:"all"
 };
@@ -402,7 +403,7 @@ function renderHome(){
   else{list.className="mini-list";list.innerHTML=due.sort((a,b)=>weakness(b)-weakness(a)).slice(0,5).map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`).join("")}
 }
 
-$("#apiBtn").onclick=()=>{$("#apiModal").classList.remove("hidden");$("#apiKeyInput").value=S.apiKey;$("#modelInput").value=S.model};
+$("#apiBtn").onclick=()=>{renderApiUsage();$("#apiModal").classList.remove("hidden");$("#apiKeyInput").value=S.apiKey;$("#modelInput").value=S.model};
 $("#closeApiBtn").onclick=()=>$("#apiModal").classList.add("hidden");
 $("#saveApiBtn").onclick=()=>{
   const k=$("#apiKeyInput").value.trim(),m=$("#modelInput").value.trim()||"gpt-5.6-terra";
@@ -412,6 +413,23 @@ $("#saveApiBtn").onclick=()=>{
 $("#forgetApiBtn").onclick=()=>{localStorage.removeItem(K_API);S.apiKey="";$("#apiKeyInput").value="";$("#apiDot").classList.remove("on");toast("저장 키 삭제 완료")};
 function needApi(){if(S.apiKey)return true;$("#apiModal").classList.remove("hidden");toast("처음 한 번 API 키를 넣어줘.");return false}
 
+const MONTHLY_PHOTO_LIMIT=150;
+const MODEL_PRICES={"gpt-5.6-luna":{input:.20,cached:.02,output:1.20,cacheWrite:.25},"gpt-5.6-terra":{input:2.00,cached:.20,output:12.00,cacheWrite:2.50}};
+function localMonthKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
+function blankApiMonth(){return {month:localMonthKey(),photoUsed:0,calls:0,cacheHits:0,inputTokens:0,outputTokens:0,models:{}}}
+function ensureApiMonth(){if(!S.apiMonth||S.apiMonth.month!==localMonthKey())S.apiMonth=blankApiMonth();if(!S.apiMonth.models||typeof S.apiMonth.models!=="object")S.apiMonth.models={}}
+function saveApiMonth(){ensureApiMonth();localStorage.setItem(K_API_MONTH,JSON.stringify(S.apiMonth))}
+function getModelUsage(model){ensureApiMonth();if(!S.apiMonth.models[model])S.apiMonth.models[model]={calls:0,inputTokens:0,cachedTokens:0,cacheWriteTokens:0,outputTokens:0,costUSD:0};return S.apiMonth.models[model]}
+function estimateUsageCost(model,u){const p=MODEL_PRICES[model];if(!p||!u)return 0;const input=Number(u.input_tokens||0),cached=Number(u.input_tokens_details?.cached_tokens||0),write=Number(u.input_tokens_details?.cache_write_tokens||0),normal=Math.max(0,input-cached-write),output=Number(u.output_tokens||0);return (normal*p.input+cached*p.cached+write*p.cacheWrite+output*p.output)/1_000_000}
+function recordResponseUsage(model,response){ensureApiMonth();const b=getModelUsage(model||"unknown"),u=response?.usage;b.calls++;S.apiMonth.calls++;if(u){const input=Number(u.input_tokens||0),cached=Number(u.input_tokens_details?.cached_tokens||0),write=Number(u.input_tokens_details?.cache_write_tokens||0),output=Number(u.output_tokens||0);b.inputTokens+=input;b.cachedTokens+=cached;b.cacheWriteTokens+=write;b.outputTokens+=output;b.costUSD+=estimateUsageCost(model,u);S.apiMonth.inputTokens+=input;S.apiMonth.outputTokens+=output}saveApiMonth();renderApiUsage()}
+function noteMonthlyCacheHit(){ensureApiMonth();S.apiMonth.cacheHits=(S.apiMonth.cacheHits||0)+1;saveApiMonth();renderApiUsage()}
+function photoRemaining(){ensureApiMonth();return Math.max(0,MONTHLY_PHOTO_LIMIT-Number(S.apiMonth.photoUsed||0))}
+function canUsePhotos(n){return Number(n||0)<=photoRemaining()}
+function consumePhotoUnit(n=1){ensureApiMonth();S.apiMonth.photoUsed=Math.min(MONTHLY_PHOTO_LIMIT,Number(S.apiMonth.photoUsed||0)+Number(n||0));saveApiMonth();renderApiUsage();renderPhotoQuota()}
+function totalApiCost(){ensureApiMonth();return Object.values(S.apiMonth.models||{}).reduce((s,x)=>s+Number(x.costUSD||0),0)}
+function compactUsageNum(n){n=Number(n||0);if(n>=1_000_000)return (n/1_000_000).toFixed(2)+"M";if(n>=1_000)return (n/1_000).toFixed(1)+"K";return String(Math.round(n))}
+function renderApiUsage(){ensureApiMonth();if(!$("#apiUsageMonth"))return;const used=Number(S.apiMonth.photoUsed||0),remain=photoRemaining();$("#apiUsageMonth").textContent=S.apiMonth.month;$("#photoUsedCount").textContent=used;$("#photoRemainingCount").textContent=`${remain}장 남음`;$("#photoQuotaBar").style.width=`${Math.min(100,used/MONTHLY_PHOTO_LIMIT*100)}%`;$("#apiMonthlyCalls").textContent=compactUsageNum(S.apiMonth.calls);$("#apiMonthlyCacheHits").textContent=compactUsageNum(S.apiMonth.cacheHits);$("#apiMonthlyInput").textContent=compactUsageNum(S.apiMonth.inputTokens);$("#apiMonthlyOutput").textContent=compactUsageNum(S.apiMonth.outputTokens);const luna=S.apiMonth.models["gpt-5.6-luna"]||{},terra=S.apiMonth.models["gpt-5.6-terra"]||{};$("#apiLunaUsage").textContent=`${luna.calls||0}회 · $${Number(luna.costUSD||0).toFixed(4)}`;$("#apiTerraUsage").textContent=`${terra.calls||0}회 · $${Number(terra.costUSD||0).toFixed(4)}`;$("#apiEstimatedCost").textContent=`$${totalApiCost().toFixed(4)}`}
+function renderPhotoQuota(){ensureApiMonth();const hint=$("#photoQuotaHint"),btn=$("#analyzeBtn");if(!hint||!btn)return;const used=Number(S.apiMonth.photoUsed||0),remain=photoRemaining();hint.textContent=remain>0?`이번 달 사진 ${used} / ${MONTHLY_PHOTO_LIMIT}장 · ${remain}장 남음`:"이번 달 사진 150장을 모두 사용했어. 다음 달 1일에 초기화돼.";hint.classList.toggle("limit",remain===0);btn.classList.toggle("quota-blocked",remain===0);btn.disabled=!S.photos.length||remain===0}
 function statsToday(){
   const d=new Date().toISOString().slice(0,10);
   if(S.apiStats.date!==d)S.apiStats={date:d,calls:0,cacheHits:0};
@@ -425,6 +443,7 @@ function noteApiCall(){
 }
 function noteCacheHit(){
   statsToday();S.apiStats.cacheHits=(S.apiStats.cacheHits||0)+1;saveApiStats();
+  noteMonthlyCacheHit();
 }
 function saveGradeCache(){
   localStorage.setItem(K_GRADE_CACHE,JSON.stringify(S.gradeCache));
@@ -702,7 +721,7 @@ async function openai(body,{prefix=null,timeoutMs=75000,retries=0}={}){
       });
       clearTimeout(timer);
       const d=await r.json().catch(()=>({}));
-      if(r.ok)return d;
+      if(r.ok){recordResponseUsage(body.model||"unknown",d);return d;}
       const msg=d?.error?.message||`API 오류 ${r.status}`;
       const retryable=r.status===429||r.status===408||r.status===500||r.status===502||r.status===503||r.status===504;
       if(!retryable||attempt>=retries)throw Error(msg);
@@ -968,7 +987,7 @@ function renderPhotos(){
     renderPhotos();
   });
 
-  $("#analyzeBtn").disabled=!S.photos.length;
+  renderPhotoQuota();
   if(S.photos.length)setPhotoStatus(`${S.photos.length}장 앱에 들어옴 ✅`,"ok");
   else setPhotoStatus("아직 선택된 사진이 없어.");
 }
@@ -1147,6 +1166,11 @@ $("#analyzeBtn").onclick=async()=>{
       return;
     }
 
+    if(!canUsePhotos(S.photos.length)){
+      const remain=photoRemaining();
+      throw Error(remain>0?`이번 달 사진이 ${remain}장 남았어. 선택한 ${S.photos.length}장을 ${remain}장 이하로 줄여줘.`:"이번 달 사진 150장을 모두 사용했어. 다음 달 1일에 다시 사용할 수 있어.");
+    }
+
     await prepareSelectedPhotosForApi();
     const total=S.photos.reduce((a,p)=>a+(p.preparedBytes||p.size||0),0);
     if(total>24*1024*1024)throw Error("고화질 준비 후 사진 용량이 커. 4장씩 나눠서 해줘.");
@@ -1176,6 +1200,7 @@ $("#analyzeBtn").onclick=async()=>{
       },{prefix:"analysis",timeoutMs:60000,retries:0});
 
       let d=normalizeExtractedData(parseAIJSON(responseText(lunaResult)));
+      consumePhotoUnit(1);
 
       if(pageNeedsTerraCheck(d)){
         terraChecks++;
@@ -2062,11 +2087,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=074",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=075",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

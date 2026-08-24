@@ -940,3 +940,13 @@ button.graduate-btn:disabled{
   color:var(--muted);
   font-size:10px;
 }
+\n\n/* BUILD 075 — API meter + monthly photo quota */
+.api-usage-panel{margin:13px 0;padding:14px;border:1px solid var(--line);border-radius:17px;background:#faf8f5}
+.api-usage-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.api-usage-head h3{margin:3px 0 0;font-size:15px}
+.api-month-chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:9.5px;font-weight:850;color:var(--muted)}
+.photo-quota-row{margin-top:13px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px}.photo-quota-row b{font-size:20px}.photo-quota-row small{display:block;color:var(--muted);font-size:9.5px;margin-top:2px}.photo-quota-row strong{font-size:10.5px}
+.api-quota-bar{height:7px;background:#e5e0d9;border-radius:999px;overflow:hidden;margin:8px 0 12px}.api-quota-bar span{display:block;height:100%;width:0;background:#171717;transition:width .2s ease}
+.api-mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.api-mini-grid>div{padding:9px 10px;background:#fff;border:1px solid var(--line);border-radius:12px}.api-mini-grid b{display:block;font-size:14px}.api-mini-grid span{display:block;color:var(--muted);font-size:9px;margin-top:2px}
+.api-model-costs{margin-top:9px;display:grid;gap:5px}.api-model-costs>div{display:flex;justify-content:space-between;gap:10px;font-size:10px}.api-model-costs span{color:var(--muted)}
+.api-total-cost{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:10px}.api-total-cost b{font-size:17px}.api-cost-note{margin:6px 0 0;color:var(--muted);font-size:8.5px;line-height:1.4}
+.photo-quota-hint{text-align:center;color:var(--muted);font-size:9.5px;margin:7px 0 0}.photo-quota-hint.limit{color:#a54842;font-weight:850}#analyzeBtn.quota-blocked{background:#d8d3cc!important;border-color:#d8d3cc!important;color:#888!important}

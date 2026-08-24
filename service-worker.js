@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v7-4-cost-cut";
+const CACHE="vocabwalk-v7-5-api-meter";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=074",
-  "./app.js?v=074",
+  "./styles.css?v=075",
+  "./app.js?v=075",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
