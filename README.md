@@ -501,3 +501,11 @@ API 비용 절약 패치.
 - `?server=` 링크를 통해 친구 폰에 Worker 주소 자동 설정
 - Luna 자동 / Terra 수동 / Sol 서버에서 선택 불가
 - OpenAI API key는 Worker Secret에만 저장
+
+
+## BUILD 078 — invite connection hotfix
+- GitHub Pages → Worker 초대코드 연결 요청을 `text/plain` 본문 방식으로 변경
+- 커스텀 인증 헤더 없이도 연결되어 모바일 CORS/preflight 문제를 회피
+- Worker는 새 본문 방식 + 기존 헤더 방식 둘 다 허용
+- Worker 루트 상태 화면에 `invite_count`, `openai_configured` 추가
+- 자동 AI 모델은 Luna만, Terra는 수동 precision 요청만

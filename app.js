@@ -447,9 +447,13 @@ function renderBetaStatus(){
   else{el.textContent="AI 서버 주소와 초대코드를 연결해줘.";el.classList.remove("ok");$("#apiDot").classList.remove("on")}
 }
 async function verifyBetaCode(server,code){
-  const r=await fetch(server+"/ping",{method:"POST",headers:{"Content-Type":"application/json","X-VocabWalk-Invite":code},body:"{}"});
+  const r=await fetch(server+"/ping",{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=UTF-8"},
+    body:JSON.stringify({inviteCode:code})
+  });
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw Error(d?.error||"서버 주소 또는 초대코드를 확인해줘.");
+  if(!r.ok)throw Error(d?.error||`서버 연결 실패 (${r.status})`);
   return d;
 }
 $("#saveApiBtn").onclick=async()=>{
@@ -770,8 +774,12 @@ async function openai(body,{prefix=null,timeoutMs=75000,retries=0,precision=fals
       noteApiCall();
       const r=await fetch(apiEndpoint("/ai"),{
         method:"POST",
-        headers:{"Content-Type":"application/json","X-VocabWalk-Invite":S.betaCode},
-        body:JSON.stringify({mode:precision?"precision":"standard",request:body}),
+        headers:{"Content-Type":"text/plain;charset=UTF-8"},
+        body:JSON.stringify({
+          inviteCode:S.betaCode,
+          mode:precision?"precision":"standard",
+          request:body
+        }),
         signal:controller.signal
       });
       clearTimeout(timer);
@@ -2151,7 +2159,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=077",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=078",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
