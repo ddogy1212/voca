@@ -128,6 +128,19 @@ function ensureFolder(name){
   if(!n||n==="출처 미지정")return;
   if(!S.folders.some(x=>norm(x)===norm(n)))S.folders.push(n);
 }
+function forceSourceFolder(data,name){
+  const n=cleanFolderName(name);
+  if(!data||!n||n==="출처 미지정")return data;
+  ensureFolder(n);
+  saveFolders();
+  for(const key of ["items","extraItems"]){
+    if(Array.isArray(data[key])){
+      data[key]=data[key].map(item=>({...item,sourceLabel:n}));
+    }
+  }
+  if(!data.title||data.title==="사진 단어장"||data.title==="자료 제목")data.title=n;
+  return data;
+}
 function syncFoldersFromWords(){
   if(!Array.isArray(S.folders))S.folders=[];
   S.folders=S.folders.map(cleanFolderName).filter(x=>x&&x!=="출처 미지정");
@@ -1208,6 +1221,7 @@ function onePassPhotoPrompt(){
 
 $("#analyzeBtn").onclick=async()=>{
   if(!S.photos.length||!needApi())return;
+  const requestedFolder=cleanFolderName($("#sourceLabel").value);
   const btn=$("#analyzeBtn");
   btn.disabled=true;
   $("#extractPanel").classList.add("hidden");
@@ -1215,7 +1229,7 @@ $("#analyzeBtn").onclick=async()=>{
   try{
     const cached=getPhotoCache();
     if(cached){
-      S.extracted=cached;
+      S.extracted=forceSourceFolder(cached,requestedFolder);
       renderExtract();bindPickEditors();
       setProgress("analysis",100,"캐시에서 완료","이 버전에서 이미 분석한 같은 사진 결과를 재사용했어.");
       stopProgress("analysis");
@@ -1282,7 +1296,7 @@ $("#analyzeBtn").onclick=async()=>{
       }
     }
     merged.items=[...byTerm.values()];
-    S.extracted=normalizeExtractedData(merged);
+    S.extracted=forceSourceFolder(normalizeExtractedData(merged),requestedFolder);
     S.extracted.webVerified=false;
     S.extracted.usedWebSearch=false;
     S.extracted.verificationNote="Luna 기본 인식 완료 · Terra 자동 호출 0회";
@@ -1305,6 +1319,7 @@ $("#analyzeBtn").onclick=async()=>{
 
 async function runManualPrecisionAnalysis(){
   if(!S.photos.length||!needApi())return;
+  const requestedFolder=cleanFolderName($("#sourceLabel").value);
   if(!confirm("정밀 재검사는 Terra를 사용해 기본 Luna보다 모델 단가가 높아. 현재 선택한 사진을 정말 다시 검사할까?"))return;
   const btn=$("#precisionAnalyzeBtn");btn.disabled=true;btn.textContent="🔎 Terra 정밀 재검사 중…";
   startProgress("analysis","정밀 재검사","사용자가 요청해서 Terra로 원본 사진을 다시 확인하고 있어.",5,90);
@@ -1328,7 +1343,7 @@ async function runManualPrecisionAnalysis(){
     const byTerm=new Map();
     for(const item of merged.items){const k=norm(item.term);if(!k)continue;if(!byTerm.has(k))byTerm.set(k,item);else{const old=byTerm.get(k);old.meanings=[...new Set([...(old.meanings||[]),...(item.meanings||[])])];old.confidence=Math.min(Number(old.confidence||1),Number(item.confidence||1));}}
     merged.items=[...byTerm.values()];
-    S.extracted=normalizeExtractedData(merged);S.extracted.verificationNote="Terra 수동 정밀 재검사 완료";
+    S.extracted=forceSourceFolder(normalizeExtractedData(merged),requestedFolder);S.extracted.verificationNote="Terra 수동 정밀 재검사 완료";
     putPhotoCache(S.extracted);renderExtract();bindPickEditors();
     setProgress("analysis",100,"정밀 재검사 완료",`총 ${S.extracted.items.length}개 · Terra는 이번 버튼을 눌렀을 때만 사용됐어.`);
     stopProgress("analysis");setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1100);
@@ -2159,7 +2174,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=078",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=079",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

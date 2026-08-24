@@ -509,3 +509,12 @@ API 비용 절약 패치.
 - Worker는 새 본문 방식 + 기존 헤더 방식 둘 다 허용
 - Worker 루트 상태 화면에 `invite_count`, `openai_configured` 추가
 - 자동 AI 모델은 Luna만, Terra는 수동 precision 요청만
+
+
+## BUILD 079
+- 테스트 영→한 AI 채점 오류 수정: Worker가 문자열 `input`도 허용
+- JSON 복구 등 텍스트형 AI 요청도 정상 처리
+- 사진 인식 화면의 이름 입력을 폴더 이름으로 명확화
+- 이름을 입력한 상태에서 사진 인식 성공 시 해당 폴더 즉시 자동 생성
+- 추출된 모든 단어/추가 단어의 `sourceLabel`을 해당 폴더로 강제 연결
+- 캐시 결과 및 Terra 수동 재검사에도 동일한 폴더 규칙 적용

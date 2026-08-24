@@ -10,12 +10,12 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=078">
+  <link rel="stylesheet" href="./styles.css?v=079">
 </head>
 <body>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.7.8 <span class="build-badge">BUILD 078</span></small>
+    <small>VOCABWALK AI · v0.7.9 <span class="build-badge">BUILD 079</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -94,7 +94,8 @@
       <button class="mode" data-mode="passage">🧾 영어 지문</button>
     </div>
 
-    <input id="sourceLabel" class="input" placeholder="예: 영어 프린트 3과 (선택)">
+    <input id="sourceLabel" class="input" maxlength="60" placeholder="폴더 이름 (예: D17, 영어 프린트 3과)">
+    <p class="fine">이름을 적고 사진을 인식하면 같은 이름의 폴더가 자동으로 만들어져.</p>
 
     <div class="manual-panel">
       <div class="section-head no-top">
@@ -388,7 +389,7 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 078</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 079</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
@@ -537,6 +538,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=078"></script>
+<script src="./app.js?v=079"></script>
 </body>
 </html>
