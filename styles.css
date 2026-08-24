@@ -933,3 +933,10 @@ button.graduate-btn:disabled{
     padding:0 8px;
   }
 }
+
+
+/* BUILD 074 — cost saver */
+.cost-mode-note{
+  color:var(--muted);
+  font-size:10px;
+}

@@ -1,7 +1,6 @@
 
-const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_TODAY="vw_today_seen_v4",K_TODAY_CACHE="vw_today_cache_v5",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v2",K_API_STATS="vw_api_stats_v1",K_FOLDERS="vw_source_folders_v1";
+const K_WORDS="vw_words_v4",K_META="vw_meta_v4",K_API="vw_api_v4",K_REWARD="vw_quiet_reward_v1",K_GRADE_CACHE="vw_grade_cache_v1",K_PHOTO_CACHE="vw_photo_cache_v3",K_API_STATS="vw_api_stats_v1",K_FOLDERS="vw_source_folders_v1";
 const savedApi=load(K_API,{apiKey:"",model:"gpt-5.6-terra"});
-const todayCacheSaved=load(K_TODAY_CACHE,{date:"",queue:[],display:[]});
 const rewardSaved=load(K_REWARD,{date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]});
 const gradeCacheSaved=load(K_GRADE_CACHE,{items:{},order:[]});
 const photoCacheSaved=load(K_PHOTO_CACHE,{items:{},order:[]});
@@ -17,13 +16,11 @@ const S={
   reward:rewardSaved,rewardSeriesView:0,
   gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,
   folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,folderWordEditId:null,
-  filter:"all",todayWords:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.display||[]):[],
-  todayQueue:todayCacheSaved.date===new Date().toISOString().slice(0,10)?(todayCacheSaved.queue||[]):[],
-  todaySeen:load(K_TODAY,[])
+  filter:"all"
 };
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-function save(){localStorage.setItem(K_WORDS,JSON.stringify(S.words));localStorage.setItem(K_META,JSON.stringify(S.meta));localStorage.setItem(K_TODAY,JSON.stringify(S.todaySeen));localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders));renderHome()}
+function save(){localStorage.setItem(K_WORDS,JSON.stringify(S.words));localStorage.setItem(K_META,JSON.stringify(S.meta));localStorage.setItem(K_FOLDERS,JSON.stringify(S.folders));renderHome()}
 function now(){return Date.now()}function day(n){return n*86400000}
 function norm(s){return String(s||"").toLowerCase().trim().replace(/\s+/g," ")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -576,10 +573,107 @@ function parseAIJSON(t){
   throw Error("AI 결과 형식을 읽지 못했어. 다시 시도해줘.");
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+
+function photoStructuredText(){
+  return {
+    verbosity:"low",
+    format:{
+      type:"json_schema",
+      name:"vocab_photo_extract",
+      strict:true,
+      schema:{
+        type:"object",
+        properties:{
+          title:{type:"string"},
+          summary:{type:"string"},
+          items:{
+            type:"array",
+            items:{
+              type:"object",
+              properties:{
+                term:{type:"string"},
+                meanings:{type:"array",items:{type:"string"}},
+                partOfSpeech:{type:"string"},
+                context:{type:"string"},
+                synonyms:{type:"array",items:{type:"string"}},
+                antonyms:{type:"array",items:{type:"string"}},
+                derivatives:{type:"array",items:{type:"string"}},
+                importance:{type:"number"},
+                confidence:{type:"number"},
+                page:{type:"number"},
+                sourceType:{type:"string"},
+                sourceLabel:{type:"string"}
+              },
+              required:["term","meanings","partOfSpeech","context","synonyms","antonyms","derivatives","importance","confidence","page","sourceType","sourceLabel"],
+              additionalProperties:false
+            }
+          },
+          extraItems:{
+            type:"array",
+            items:{
+              type:"object",
+              properties:{
+                term:{type:"string"},
+                meanings:{type:"array",items:{type:"string"}},
+                partOfSpeech:{type:"string"},
+                context:{type:"string"},
+                synonyms:{type:"array",items:{type:"string"}},
+                antonyms:{type:"array",items:{type:"string"}},
+                derivatives:{type:"array",items:{type:"string"}},
+                importance:{type:"number"},
+                confidence:{type:"number"},
+                page:{type:"number"},
+                sourceType:{type:"string"},
+                sourceLabel:{type:"string"}
+              },
+              required:["term","meanings","partOfSpeech","context","synonyms","antonyms","derivatives","importance","confidence","page","sourceType","sourceLabel"],
+              additionalProperties:false
+            }
+          },
+          warnings:{type:"array",items:{type:"string"}},
+          corrections:{
+            type:"array",
+            items:{
+              type:"object",
+              properties:{
+                before:{type:"string"},
+                after:{type:"string"},
+                reason:{type:"string"}
+              },
+              required:["before","after","reason"],
+              additionalProperties:false
+            }
+          },
+          verificationNote:{type:"string"}
+        },
+        required:["title","summary","items","extraItems","warnings","corrections","verificationNote"],
+        additionalProperties:false
+      }
+    }
+  };
+}
+function pageNeedsTerraCheck(d){
+  if(!d || !Array.isArray(d.items) || !d.items.length)return true;
+  if((d.warnings||[]).length>0)return true;
+  return d.items.some(x=>Number(x.confidence||0)<0.82 || !String(x.term||"").trim() || !(x.meanings||[]).length);
+}
+function terraVerifyPrompt(pageNo,lunaData){
+  const uncertain=(lunaData.items||[])
+    .filter(x=>Number(x.confidence||0)<0.88)
+    .map(x=>({term:x.term,meanings:x.meanings,confidence:x.confidence}));
+  return `${singlePhotoAccuracyPrompt(pageNo)}
+이 사진은 저비용 1차 인식에서 불확실 판정이 나서 정밀 재검사하는 단계다.
+1차 결과 중 특히 아래 항목을 원본 사진과 다시 대조하라:
+${JSON.stringify(uncertain)}
+원본 사진이 최우선이다. 1차 결과가 틀렸으면 수정하고, 누락된 행이 있으면 추가하라.
+전체 페이지를 최종본으로 다시 출력하라.`;
+}
+
 function taskModel(task){
-  if(task==="photo") return "gpt-5.6-terra";
+  if(task==="photo") return "gpt-5.6-luna";
+  if(task==="photo_verify") return "gpt-5.6-terra";
   if(task==="fast") return "gpt-5.6-luna";
-  return S.model||"gpt-5.6-terra";
+  return S.model||"gpt-5.6-luna";
 }
 const progressTimers={};
 function setProgress(prefix,pct,label,detail){
@@ -592,7 +686,7 @@ function startProgress(prefix,label,detail,start=3,cap=88){
   progressTimers[prefix]=setInterval(()=>{if(pct>=cap)return;const step=pct<35?2:pct<65?1.2:.55;pct=Math.min(cap,pct+step);setProgress(prefix,pct)},650);
 }
 function stopProgress(prefix){clearInterval(progressTimers[prefix]);delete progressTimers[prefix]}
-async function openai(body,{prefix=null,timeoutMs=75000,retries=1}={}){
+async function openai(body,{prefix=null,timeoutMs=75000,retries=0}={}){
   if(!needApi())throw Error("API 키 필요");
   let lastErr;
   for(let attempt=0;attempt<=retries;attempt++){
@@ -1064,29 +1158,58 @@ $("#analyzeBtn").onclick=async()=>{
       webVerified:false,usedWebSearch:false
     };
 
+    let terraChecks=0;
     for(let i=0;i<S.photos.length;i++){
       const photo=S.photos[i];
-      const pct=25+Math.round((i/Math.max(1,S.photos.length))*60);
-      setProgress("analysis",pct,`정확 인식 ${i+1}/${S.photos.length}`,`${photo.name}의 영어/한국어 행을 따로 읽고 다시 맞추는 중`);
+      const pct=25+Math.round((i/Math.max(1,S.photos.length))*55);
+      setProgress("analysis",pct,`저비용 인식 ${i+1}/${S.photos.length}`,`${photo.name} · Luna로 먼저 정확하게 읽는 중`);
 
-      const result=await openai({
+      const lunaResult=await openai({
         model:taskModel("photo"),
         reasoning:{effort:"none"},
-        text:{verbosity:"low"},
-        max_output_tokens:S.mode==="wordlist"?3000:3600,
+        text:photoStructuredText(),
+        max_output_tokens:S.mode==="wordlist"?2400:3000,
         input:[{role:"user",content:[
           {type:"input_text",text:singlePhotoAccuracyPrompt(i+1)},
           {type:"input_image",image_url:photo.data,detail:"high"}
         ]}]
-      },{prefix:"analysis",timeoutMs:65000,retries:1});
+      },{prefix:"analysis",timeoutMs:60000,retries:0});
 
-      const d=await parseAIJSONOrRepair(responseText(result),"photo_page_"+(i+1));
+      let d=normalizeExtractedData(parseAIJSON(responseText(lunaResult)));
+
+      if(pageNeedsTerraCheck(d)){
+        terraChecks++;
+        setProgress(
+          "analysis",
+          Math.min(90,pct+8),
+          `정밀 확인 ${i+1}/${S.photos.length}`,
+          "글씨가 불확실한 사진만 Terra로 한 번 더 확인하고 있어."
+        );
+
+        const terraResult=await openai({
+          model:taskModel("photo_verify"),
+          reasoning:{effort:"none"},
+          text:photoStructuredText(),
+          max_output_tokens:S.mode==="wordlist"?2600:3200,
+          input:[{role:"user",content:[
+            {type:"input_text",text:terraVerifyPrompt(i+1,d)},
+            {type:"input_image",image_url:photo.data,detail:"high"}
+          ]}]
+        },{prefix:"analysis",timeoutMs:65000,retries:0});
+
+        d=normalizeExtractedData(parseAIJSON(responseText(terraResult)));
+        d.verificationNote="불확실 항목 Terra 정밀 재검사 완료";
+      }else{
+        d.verificationNote="Luna 1차 인식으로 충분히 확실";
+      }
+
       if(!merged.summary&&d.summary)merged.summary=d.summary;
       merged.items.push(...(d.items||[]).map(x=>({...x,page:i+1})));
       merged.extraItems.push(...(d.extraItems||[]));
       merged.warnings.push(...(d.warnings||[]).map(w=>`사진 ${i+1}: ${w}`));
       merged.corrections.push(...(d.corrections||[]));
     }
+    merged.terraChecks=terraChecks;
 
     // 같은 영어가 여러 페이지에 반복되면 뜻을 합치고, 첫 등장 순서는 유지한다.
     const byTerm=new Map();
@@ -1104,11 +1227,11 @@ $("#analyzeBtn").onclick=async()=>{
     S.extracted=normalizeExtractedData(merged);
     S.extracted.webVerified=false;
     S.extracted.usedWebSearch=false;
-    S.extracted.verificationNote="원본 사진을 페이지별로 고화질 대조 완료";
+    S.extracted.verificationNote=merged.terraChecks?`Luna 전체 인식 + 불확실 사진 ${merged.terraChecks}장만 Terra 재검사`:"Luna 인식 완료 · Terra 추가 호출 없음";
 
     putPhotoCache(S.extracted);
     renderExtract();bindPickEditors();
-    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개를 페이지별로 대조했어. 웹검색 없이도 바로 저장할 수 있어.`);
+    setProgress("analysis",100,"완료",`총 ${S.extracted.items.length}개 · Terra 추가검사 ${merged.terraChecks||0}장 · 자동 재시도 0회`);
     stopProgress("analysis");
     setTimeout(()=>$("#analysisStatus").classList.add("hidden"),1000);
     $("#extractPanel").classList.remove("hidden");
@@ -1218,85 +1341,6 @@ $("#savePicked").onclick=()=>{
   S.photos.forEach(p=>{if(p.preview&&String(p.preview).startsWith("blob:")){try{URL.revokeObjectURL(p.preview)}catch{}}});
   save();toast(`${n}개 새로 저장`);S.photos=[];renderPhotos();show("home");
 };
-
-/* Today words — v0.5: 15개 캐시 후 5개씩 즉시 표시 */
-function saveTodayCache(){
-  localStorage.setItem(K_TODAY_CACHE,JSON.stringify({date:new Date().toISOString().slice(0,10),queue:S.todayQueue,display:S.todayWords}));
-}
-function todayPrompt(){
-  const ranked=[...S.words].sort((a,b)=>{
-    const ar=(a.wrong||0)*3+(a.skipCount||0)*3-(a.strength||0);
-    const br=(b.wrong||0)*3+(b.skipCount||0)*3-(b.strength||0);
-    return br-ar;
-  });
-  const current=ranked.slice(0,35).map(w=>({
-    term:w.term,
-    meaning:w.meanings?.[0]||"",
-    wrong:w.wrong||0,
-    skip:w.skipCount||0
-  }));
-  const exclude=[...new Set([
-    ...S.words.map(w=>w.term),
-    ...S.todaySeen,
-    ...S.todayQueue.map(x=>x.term),
-    ...S.todayWords.map(x=>x.term)
-  ])].slice(-160);
-
-  return `한국 고등학생 영어 독해 어휘 코치다.
-웹 검색 1회로 수능·모의고사 독해에 유용한지 확인하고 새 단어 15개를 추천한다.
-약 5개는 현재 약한 단어와 연결되는 동의어·반의어·파생어·혼동어, 약 10개는 폭넓게 유용한 학술·추상 어휘로 한다.
-이미 있는 단어와 제외 목록은 넣지 않는다.
-현재 약한 단어:${JSON.stringify(current)}
-제외:${JSON.stringify(exclude)}
-JSON만:
-{"items":[{"term":"영어","meanings":["핵심 한국어 뜻"],"partOfSpeech":"품사","context":"독해 핵심","synonyms":["동의어"],"antonyms":["반의어"],"derivatives":["파생형"],"importance":1,"sourceType":"today","sourceLabel":"오늘의 단어","origin":"linked|exam","reason":"짧은 이유"}]}`;
-}
-function showFiveFromTodayQueue(){
-  const take=S.todayQueue.splice(0,5);
-  if(!take.length)return false;
-  S.todayWords.push(...take);S.todaySeen.push(...take.map(x=>x.term));save();saveTodayCache();renderToday();$("#moreTodayBtn").classList.remove("hidden");return true;
-}
-async function fetchTodayBatch(){
-  startProgress("today","웹 검색 시작","15개를 한 번 받아서 이후 5개씩 빠르게 보여줄게.",7,90);
-  setProgress("today",16,"내 단어장 비교 중","이미 외우는 단어와 중복되지 않게 정리하고 있어.");
-  const d=await openai({
-    model:taskModel("fast"),
-    reasoning:{effort:"none"},
-    text:{verbosity:"low"},
-    max_output_tokens:2600,
-    max_tool_calls:1,
-    parallel_tool_calls:false,
-    tools:[{type:"web_search",search_context_size:"low"}],
-    tool_choice:"required",
-    input:todayPrompt()
-  },{prefix:"today",timeoutMs:50000,retries:1});
-  setProgress("today",92,"추천 목록 정리 중","중복과 이미 외우는 단어를 한 번 더 제거하고 있어.");
-  if(!(d.output||[]).some(x=>x.type==="web_search_call"))throw Error("웹 검색이 실행되지 않았어.");
-  const j=parseAIJSON(responseText(d));
-  const fresh=(j.items||[]).filter(x=>x.term&&!S.todaySeen.some(t=>norm(t)===norm(x.term))&&!S.words.some(w=>norm(w.term)===norm(x.term))&&!S.todayQueue.some(w=>norm(w.term)===norm(x.term)));
-  S.todayQueue.push(...fresh);saveTodayCache();
-}
-async function loadToday(){
-  if(S.todayQueue.length>=5){
-    showFiveFromTodayQueue();toast("캐시에서 바로 5개 불러왔어 ⚡");return;
-  }
-  if(!needApi())return;
-  $("#loadTodayBtn").disabled=true;$("#moreTodayBtn").disabled=true;
-  try{
-    await fetchTodayBatch();
-    if(!S.todayQueue.length)throw Error("새 추천 단어를 충분히 찾지 못했어. 한 번 더 눌러줘.");
-    showFiveFromTodayQueue();
-    setProgress("today",100,"완료",`5개 표시 완료 · 다음 ${Math.min(10,S.todayQueue.length)}개는 미리 받아뒀어.`);
-    stopProgress("today");setTimeout(()=>$("#todayStatus").classList.add("hidden"),1100);
-  }catch(e){stopProgress("today");setProgress("today",0,"불러오기 실패",e.message);toast(e.message)}
-  finally{$("#loadTodayBtn").disabled=false;$("#moreTodayBtn").disabled=false}
-}
-$("#loadTodayBtn").onclick=loadToday;$("#moreTodayBtn").onclick=loadToday;
-function renderToday(){
-  $("#todayList").innerHTML=S.todayWords.map((x,i)=>`<div class="today-card"><div class="topline"><div><h3>${esc(x.term)}</h3><div class="meaning">${esc((x.meanings||[]).join(" · "))}</div></div><span class="source-tag">${x.origin==="linked"?"내 단어 연결":"시험 독해"}</span></div><p>${esc(x.reason||x.context||"")}</p>${relText(x)?`<p>${esc(relText(x))}</p>`:""}<div class="today-actions"><button data-today-add="${i}">＋ 단어장 추가</button><button data-today-star="${i}">★ 추가+즐겨찾기</button></div></div>`).join("");
-  $$("[data-today-add]").forEach(b=>b.onclick=()=>{const x=S.todayWords[+b.dataset.todayAdd];const added=addWord(x);save();toast(added?"단어장에 추가":"이미 단어장에 있어")});
-  $$("[data-today-star]").forEach(b=>b.onclick=()=>{const x=S.todayWords[+b.dataset.todayStar];addWord(x);const w=S.words.find(w=>norm(w.term)===norm(x.term));if(w)w.star=true;save();toast("추가 + 즐겨찾기 완료")});
-}
 
 /* review */
 function interval(w,g){if(g==="again"){w.strength=Math.max(0,(w.strength||0)-1);w.stability=Math.max(.3,(w.stability||.5)*.55);return 5*60000}if(g==="hard"){w.strength=Math.max(1,w.strength||0);w.stability=Math.min(90,(w.stability||.5)*1.45);return Math.max(30*60000,day(w.stability*.45))}w.strength=Math.min(6,(w.strength||0)+1);w.stability=Math.min(180,(w.stability||.5)*(2.05+w.strength*.08));return day(Math.max(1,w.stability))}
@@ -1435,7 +1479,7 @@ function speakEnglish(text){
 }
 function renderReview(){
   if(S.reviewIndex>=S.reviewQueue.length){toast("이번 암기 끝 ✨");show("home");return}
-  const w=S.reviewQueue[S.reviewIndex];S.reviewFlipped=false;$("#reviewProgress").style.width=`${(S.reviewIndex+1)/S.reviewQueue.length*100}%`;$("#reviewTag").textContent=w.sourceType==="passage"?"PASSAGE":w.sourceType==="today"?"TODAY":w.sourceType==="suggested"?"EXTRA":"WORD";$("#reviewTerm").textContent=w.term;$("#reviewPOS").textContent=w.partOfSpeech||"";$("#reviewMeaning").textContent=w.meanings.join(" · ");$("#reviewContext").textContent=w.context||"";$("#reviewBack").classList.add("hidden");$("#memoryBtns").classList.add("hidden");$("#tapHint").classList.remove("hidden");const rel=[];(w.synonyms||[]).forEach(x=>rel.push(`<span class="rel">≈ ${esc(x)}</span>`));(w.antonyms||[]).forEach(x=>rel.push(`<span class="rel">↔ ${esc(x)}</span>`));(w.derivatives||[]).forEach(x=>rel.push(`<span class="rel">↗ ${esc(x)}</span>`));$("#relations").innerHTML=rel.join("");$("#starBtn").textContent=w.star?"★ 중요":"☆ 중요";
+  const w=S.reviewQueue[S.reviewIndex];S.reviewFlipped=false;$("#reviewProgress").style.width=`${(S.reviewIndex+1)/S.reviewQueue.length*100}%`;$("#reviewTag").textContent=w.sourceType==="passage"?"PASSAGE":w.sourceType==="suggested"?"EXTRA":"WORD";$("#reviewTerm").textContent=w.term;$("#reviewPOS").textContent=w.partOfSpeech||"";$("#reviewMeaning").textContent=w.meanings.join(" · ");$("#reviewContext").textContent=w.context||"";$("#reviewBack").classList.add("hidden");$("#memoryBtns").classList.add("hidden");$("#tapHint").classList.remove("hidden");const rel=[];(w.synonyms||[]).forEach(x=>rel.push(`<span class="rel">≈ ${esc(x)}</span>`));(w.antonyms||[]).forEach(x=>rel.push(`<span class="rel">↔ ${esc(x)}</span>`));(w.derivatives||[]).forEach(x=>rel.push(`<span class="rel">↗ ${esc(x)}</span>`));$("#relations").innerHTML=rel.join("");$("#starBtn").textContent=w.star?"★ 중요":"☆ 중요";
   setTimeout(()=>speakEnglish(w.term),90);
 }
 $("#flash").onclick=()=>{S.reviewFlipped=!S.reviewFlipped;$("#reviewBack").classList.toggle("hidden",!S.reviewFlipped);$("#memoryBtns").classList.toggle("hidden",!S.reviewFlipped);$("#tapHint").classList.toggle("hidden",S.reviewFlipped)};
@@ -1993,9 +2037,9 @@ function renderLibrary(){
   $$("[data-del]").forEach(b=>b.onclick=()=>{S.words=S.words.filter(x=>x.id!==b.dataset.del);save();renderLibrary()});
 }
 $("#search").oninput=renderLibrary;$$(".filter").forEach(b=>b.onclick=()=>{$$(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.filter=b.dataset.filter;renderLibrary()});
-$("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:4,words:S.words,meta:S.meta,todaySeen:S.todaySeen},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`VocabWalk-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};
-$("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");S.words=d.words;S.meta=d.meta||S.meta;S.todaySeen=d.todaySeen||S.todaySeen;migrate();save();renderLibrary();toast(`${S.words.length}개 복원`)}catch(err){toast(err.message)}};
-$("#clearBtn").onclick=()=>{if(confirm("정말 모든 단어와 학습 기록을 삭제할까?")){S.words=[];S.meta={correct:0,wrong:0,lastStudy:null,streak:0};S.todaySeen=[];save();renderLibrary();toast("전체 삭제 완료")}};
+$("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:5,words:S.words,meta:S.meta,folders:S.folders},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`VocabWalk-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};
+$("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");S.words=d.words;S.meta=d.meta||S.meta;S.folders=Array.isArray(d.folders)?d.folders:S.folders;migrate();save();renderLibrary();toast(`${S.words.length}개 복원`)}catch(err){toast(err.message)}};
+$("#clearBtn").onclick=()=>{if(confirm("정말 모든 단어와 학습 기록을 삭제할까?")){S.words=[];S.meta={correct:0,wrong:0,lastStudy:null,streak:0};S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
 
 $("#sampleBtn").onclick=()=>{const a=[{term:"reinforce",meanings:["강화하다","보강하다"],partOfSpeech:"v.",synonyms:["strengthen","bolster"],antonyms:["weaken"],derivatives:["reinforcement"],sourceType:"sample",sourceLabel:"샘플"},{term:"undermine",meanings:["약화시키다","훼손하다"],partOfSpeech:"v.",synonyms:["weaken","impair"],sourceType:"sample",sourceLabel:"샘플"},{term:"compelling",meanings:["설득력 있는","매우 흥미로운"],partOfSpeech:"adj.",synonyms:["convincing","persuasive"],sourceType:"sample",sourceLabel:"샘플"}];let n=0;a.forEach(x=>{if(addWord(x))n++});save();toast(`샘플 ${n}개 추가`)};
 
@@ -2018,11 +2062,11 @@ function migrate(){
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
 }
-migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();saveTodayCache();renderToday();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
+migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();save();renderRewardStrip();if(S.apiKey)$("#apiDot").classList.add("on");else setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=073",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=074",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
