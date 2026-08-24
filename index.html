@@ -10,7 +10,7 @@
   <title>VocabWalk AI</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=081">
+  <link rel="stylesheet" href="./styles.css?v=082">
 </head>
 <body>
 <div class="study-mode-bar" aria-label="학습 언어 모드">
@@ -28,7 +28,7 @@
 </div>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.8.1 <span class="build-badge">BUILD 081</span></small>
+    <small>VOCABWALK AI · v0.8.2 <span class="build-badge">BUILD 082</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -403,7 +403,7 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 081</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 082</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
@@ -531,6 +531,42 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 
+
+<div id="extractWordEditModal" class="modal-wrap hidden">
+  <div class="modal folder-word-edit-modal">
+    <span class="eyebrow">EDIT RECOGNITION</span>
+    <h2 id="extractEditTitle">인식 결과 수정</h2>
+
+    <div id="extractEditLanguageHint" class="folder-edit-preserve">
+      AI가 읽은 원문과 뜻을 저장 전에 직접 확인하고 수정할 수 있어.
+    </div>
+
+    <label id="extractEditTermLabel" class="folder-edit-label" for="extractEditTerm">단어 / 표현</label>
+    <input id="extractEditTerm"
+           class="folder-edit-input"
+           type="text"
+           autocomplete="off"
+           autocapitalize="off"
+           autocorrect="off"
+           spellcheck="false">
+
+    <label class="folder-edit-label" for="extractEditMeaning">한국어 뜻</label>
+    <textarea id="extractEditMeaning"
+              class="folder-edit-textarea"
+              rows="4"
+              placeholder="여러 뜻은 / 로 구분"></textarea>
+
+    <div class="folder-edit-preserve">
+      수정한 내용이 최종 저장값이 돼. 학습 기록에는 아직 영향을 주지 않아.
+    </div>
+
+    <div class="folder-modal-actions">
+      <button id="extractWordEditCancel" class="folder-secondary-btn" type="button">취소</button>
+      <button id="extractWordEditSave" class="folder-primary-btn" type="button">수정 저장</button>
+    </div>
+  </div>
+</div>
+
 <div id="folderWordEditModal" class="modal-wrap hidden">
   <div class="modal folder-word-edit-modal">
     <span class="eyebrow">EDIT WORD</span>
@@ -552,6 +588,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=081"></script>
+<script src="./app.js?v=082"></script>
 </body>
 </html>

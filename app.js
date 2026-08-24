@@ -35,7 +35,7 @@ const S={
   transformType:"mixed",transformSource:null,transformQueue:[],transformIndex:0,transformCorrect:0,
   reward:rewardSaved,rewardSeriesView:0,
   gradeCache:gradeCacheSaved,photoCache:photoCacheSaved,apiStats:apiStatsSaved,apiMonth:apiMonthSaved,
-  folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,folderWordEditId:null,
+  folders:Array.isArray(folderSaved)?folderSaved:[],folderEditMode:"create",folderEditOldName:null,folderManagerName:null,folderWordEditId:null,extractEditKey:null,
   filter:"all"
 };
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -1480,17 +1480,10 @@ function pick(x,key,checked){
       <small>${esc((x.meanings||[]).join(", "))}</small>
       ${x.context?`<small>${esc(x.context)}</small>`:""}
       ${Number(x.confidence||1)<(isMinorMode()?0.9:0.8)?`<small class="confidence-warn">⚠ ${isMinorMode()?langCfg().name+" 원문 재확인 권장":"글씨 확인 필요 · 직접 수정 권장"}</small>`:""}
+      ${x.userEdited?`<small class="extract-user-edited">✓ 직접 수정됨</small>`:""}
       ${relText(x)?`<small>${esc(relText(x))}</small>`:""}
-      <div class="pick-editor hidden" data-editor="${key}">
-        <input class="input" data-edit-term="${key}" value="${esc(x.term||"")}" placeholder="${esc(langCfg().name)} 단어/표현">
-        <input class="input" data-edit-meaning="${key}" value="${esc((x.meanings||[]).join(" / "))}" placeholder="한국어 뜻">
-        <div class="pick-editor-actions">
-          <button type="button" class="save" data-save-edit="${key}">저장</button>
-          <button type="button" data-cancel-edit="${key}">취소</button>
-        </div>
-      </div>
     </span>
-    <button type="button" class="pick-edit-btn" data-edit-pick="${key}">수정</button>
+    <button type="button" class="pick-edit-btn" data-edit-pick="${key}">✏️ 수정</button>
   </div>`;
 }
 function renderExtract(){
@@ -1519,35 +1512,52 @@ function refreshPickRow(key){
   row.replaceWith(wrap.firstElementChild);
   bindPickEditors();
 }
+function languageInputCode(){
+  return ({en:"en",ru:"ru",ja:"ja",fr:"fr",zh:"zh-CN"})[S.studyLang]||"";
+}
+
+function openExtractWordEdit(key){
+  const item=getExtractItemByKey(key);
+  if(!item)return;
+
+  S.extractEditKey=key;
+
+  const cfg=langCfg();
+  $("#extractEditTitle").textContent=`${cfg.emoji} ${cfg.name} 인식 결과 수정`;
+  $("#extractEditTermLabel").textContent=`${cfg.name} 단어 / 표현`;
+
+  const term=$("#extractEditTerm");
+  term.value=item.term||"";
+  term.setAttribute("lang",languageInputCode());
+  term.setAttribute("aria-label",`${cfg.name} 단어 또는 표현`);
+
+  $("#extractEditMeaning").value=(item.meanings||[]).join(" / ");
+
+  const hint=$("#extractEditLanguageHint");
+  if(isMinorMode()){
+    hint.textContent=`${cfg.name}는 AI 인식 오류를 사용자가 놓칠 수 있으니 원문 철자·문자를 직접 확인해줘. 수정한 값이 그대로 저장돼.`;
+  }else{
+    hint.textContent="AI가 읽은 단어와 뜻을 저장 전에 직접 수정할 수 있어.";
+  }
+
+  $("#extractWordEditModal").classList.remove("hidden");
+  setTimeout(()=>{
+    term.focus();
+    try{term.setSelectionRange(term.value.length,term.value.length)}catch{}
+  },80);
+}
+
+function closeExtractWordEdit(){
+  S.extractEditKey=null;
+  $("#extractWordEditModal").classList.add("hidden");
+}
+
 function bindPickEditors(){
   $$("[data-edit-pick]").forEach(btn=>{
-    btn.onclick=()=>{
-      const key=btn.dataset.editPick;
-      $(`[data-editor="${key}"]`)?.classList.toggle("hidden");
-    };
-  });
-  $$("[data-cancel-edit]").forEach(btn=>{
-    btn.onclick=()=>{
-      const key=btn.dataset.cancelEdit;
-      $(`[data-editor="${key}"]`)?.classList.add("hidden");
-    };
-  });
-  $$("[data-save-edit]").forEach(btn=>{
-    btn.onclick=()=>{
-      const key=btn.dataset.saveEdit;
-      const item=getExtractItemByKey(key);
-      if(!item)return;
-      const term=$(`[data-edit-term="${key}"]`)?.value.trim()||"";
-      const meaningText=$(`[data-edit-meaning="${key}"]`)?.value.trim()||"";
-      if(!term)return toast(`${langCfg().name} 단어를 입력해줘.`);
-      if(!meaningText)return toast("한국어 뜻을 입력해줘.");
-      const meanings=meaningText.split(/\s*[\/;]\s*/).map(x=>x.trim()).filter(Boolean);
-      item.term=term;
-      item.meanings=meanings.length?meanings:[meaningText];
-      item.confidence=1;
-      item.userEdited=true;
-      refreshPickRow(key);
-      toast("수정 완료 ✏️");
+    btn.onclick=e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      openExtractWordEdit(btn.dataset.editPick);
     };
   });
 }
@@ -2216,6 +2226,48 @@ $("#folderEditSave").onclick=()=>{
   }
 };
 $("#folderNameInput").onkeydown=e=>{if(e.key==="Enter")$("#folderEditSave").click()};
+
+$("#extractWordEditCancel").onclick=closeExtractWordEdit;
+$("#extractWordEditSave").onclick=()=>{
+  const key=S.extractEditKey;
+  const item=getExtractItemByKey(key);
+  if(!item)return closeExtractWordEdit();
+
+  const term=String($("#extractEditTerm").value||"").trim();
+  const meaningText=String($("#extractEditMeaning").value||"").trim();
+  const meanings=meaningText
+    .split(/\s*[\/;]\s*/)
+    .map(x=>x.trim())
+    .filter(Boolean);
+
+  if(!term)return toast(`${langCfg().name} 단어/표현을 입력해줘.`);
+  if(!meanings.length)return toast("한국어 뜻을 하나 이상 입력해줘.");
+
+  item.term=term;
+  item.meanings=[...new Set(meanings)];
+  item.confidence=1;
+  item.userEdited=true;
+
+  closeExtractWordEdit();
+  refreshPickRow(key);
+  toast(`✏️ ${term} 수정 완료`);
+};
+$("#extractEditTerm").onkeydown=e=>{
+  if(e.key==="Enter" && !e.isComposing){
+    e.preventDefault();
+    $("#extractEditMeaning").focus();
+  }
+};
+$("#extractEditMeaning").onkeydown=e=>{
+  if((e.ctrlKey||e.metaKey) && e.key==="Enter"){
+    e.preventDefault();
+    $("#extractWordEditSave").click();
+  }
+};
+$("#extractWordEditModal").onclick=e=>{
+  if(e.target.id==="extractWordEditModal")closeExtractWordEdit();
+};
+
 $("#folderManagerClose").onclick=closeFolderManager;
 $("#folderWordEditCancel").onclick=closeFolderWordEdit;
 $("#folderWordEditSave").onclick=()=>{
@@ -2391,7 +2443,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=081",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=082",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

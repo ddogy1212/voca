@@ -981,3 +981,46 @@ button.graduate-btn:disabled{
 .minor-accuracy-notice{margin:7px 0 10px;padding:10px 11px;border:1px solid #d9d2ff;background:#f5f1ff;color:#5c47a8;border-radius:13px;font-size:11px;font-weight:750;line-height:1.45}
 body.minor-study-mode .precision-btn{background:#5c47a8;color:#fff;border-color:#5c47a8}
 @media(max-width:480px){.study-mode-bar{padding-left:9px;padding-right:9px}.study-main-btn{font-size:11px;padding:8px 6px}.minor-language-row button{font-size:10px;padding:7px 9px}}
+
+
+/* BUILD 082 · recognition edit modal */
+.extract-user-edited{
+  font-weight:700;
+  opacity:.78;
+}
+.pick-edit-btn{
+  flex:0 0 auto;
+  min-width:72px;
+  min-height:42px;
+  padding:9px 12px;
+  font-size:13px;
+  font-weight:800;
+  touch-action:manipulation;
+}
+#extractWordEditModal .modal{
+  width:min(92vw,520px);
+}
+#extractWordEditModal .folder-edit-input,
+#extractWordEditModal .folder-edit-textarea{
+  width:100%;
+  font-size:16px; /* 모바일에서 자동 확대 방지 + CJK/키릴 문자 편집성 */
+  line-height:1.45;
+}
+#extractWordEditModal .folder-edit-textarea{
+  resize:vertical;
+  min-height:105px;
+}
+@media (max-width:520px){
+  .pick{
+    align-items:flex-start;
+  }
+  .pick-edit-btn{
+    min-width:68px;
+    padding:9px 10px;
+  }
+  #extractWordEditModal .modal{
+    width:calc(100vw - 24px);
+    max-height:88vh;
+    overflow:auto;
+  }
+}

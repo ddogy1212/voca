@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v8-1-github-worker";
+const CACHE="vocabwalk-v8-2-github-worker";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=081",
-  "./app.js?v=081",
+  "./styles.css?v=082",
+  "./app.js?v=082",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
