@@ -11,7 +11,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-32.png">
-  <link rel="stylesheet" href="./styles.css?v=083">
+  <link rel="stylesheet" href="./styles.css?v=084">
 </head>
 <body>
 <div class="study-mode-bar" aria-label="학습 언어 모드">
@@ -29,7 +29,7 @@
 </div>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.8.3 <span class="build-badge">BUILD 083</span></small>
+    <small>VOCABWALK AI · v0.8.4 <span class="build-badge">BUILD 084</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -404,14 +404,14 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 083</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 084</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
 
     <div class="api-usage-panel">
       <div class="api-usage-head"><div><span class="eyebrow">THIS DEVICE</span><h3>이번 달 이 기기 사용량</h3></div><span id="apiUsageMonth" class="api-month-chip">-</span></div>
-      <div class="photo-quota-row"><div><b><span id="photoUsedCount">0</span> / 150장</b><small>사진 AI 분석</small></div><strong id="photoRemainingCount">150장 남음</strong></div>
+      <div class="photo-quota-row"><div><b><span id="photoUsedCount">0</span> / <span id="photoQuotaTotal">150</span>장</b><small>사진 AI 분석</small></div><strong id="photoRemainingCount">150장 남음</strong></div>
       <div class="api-quota-bar"><span id="photoQuotaBar"></span></div>
       <div class="api-mini-grid">
         <div><b id="apiMonthlyCalls">0</b><span>API 호출</span></div><div><b id="apiMonthlyCacheHits">0</b><span>캐시 절약</span></div>
@@ -419,7 +419,7 @@ compelling = 설득력 있는"></textarea>
       </div>
       <div class="api-model-costs"><div><span>Luna</span><b id="apiLunaUsage">0회 · $0.0000</b></div><div><span>Terra(수동)</span><b id="apiTerraUsage">0회 · $0.0000</b></div></div>
       <div class="api-total-cost"><span>이 기기 예상 OpenAI 비용</span><b id="apiEstimatedCost">$0.0000</b></div>
-      <p class="api-cost-note">실제 API 응답의 토큰 사용량으로 계산한 추정치야.</p>
+      <p id="apiUsageScope" class="api-cost-note">이 기기 기준 · D1 연결 시 서버 제한</p><p class="api-cost-note">실제 API 응답의 토큰 사용량으로 계산한 추정치야.</p>
     </div>
 
     <label class="beta-field-label" for="serverUrlInput">AI 서버 주소</label>
@@ -589,6 +589,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=083"></script>
+<script src="./app.js?v=084"></script>
 </body>
 </html>

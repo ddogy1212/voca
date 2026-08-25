@@ -27,7 +27,7 @@ const folderSaved=load(profileKey(K_FOLDERS,initialStudyLang),[]);
 const S={
   studyLang:initialStudyLang,lastMinorLang:initialStudyLang!=="en"?initialStudyLang:(validStudyLang(localStorage.getItem(K_LAST_MINOR)||"ru")==="en"?"ru":validStudyLang(localStorage.getItem(K_LAST_MINOR)||"ru")),
   words:load(profileKey(K_WORDS,initialStudyLang),[]),meta:load(profileKey(K_META,initialStudyLang),freshMeta()),
-  betaCode:savedBeta.code||"",betaLabel:savedBeta.label||"",serverUrl:savedServer,
+  betaCode:savedBeta.code||"",betaLabel:savedBeta.label||"",serverUrl:savedServer,serverUsage:null,
   mode:"wordlist",photos:[],extracted:null,
   reviewQueue:[],reviewIndex:0,reviewFlipped:false,reviewPreset:null,reviewRangeMode:"all",reviewSource:null,
   testSkipTimer:null,
@@ -555,6 +555,7 @@ $("#saveApiBtn").onclick=async()=>{
   try{
     const d=await verifyBetaCode(server,code);
     S.serverUrl=server;S.betaCode=code;S.betaLabel=d.label||"";
+    applyServerUsage(d.usage);
     localStorage.setItem(K_SERVER,S.serverUrl);
     localStorage.setItem(K_BETA,JSON.stringify({code:S.betaCode,label:S.betaLabel}));
     renderBetaStatus();$("#apiModal").classList.add("hidden");toast("비공개 베타 연결 완료 ✅");
@@ -563,7 +564,7 @@ $("#saveApiBtn").onclick=async()=>{
 };
 $("#forgetApiBtn").onclick=()=>{
   localStorage.removeItem(K_BETA);localStorage.removeItem(K_SERVER);
-  S.betaCode="";S.betaLabel="";S.serverUrl="";
+  S.betaCode="";S.betaLabel="";S.serverUrl="";S.serverUsage=null;
   $("#betaCodeInput").value="";$("#serverUrlInput").value="";renderBetaStatus();toast("베타 연결 해제 완료");
 };
 $("#copyBetaLinkBtn").onclick=async()=>{
@@ -589,15 +590,46 @@ function ensureApiMonth(){if(!S.apiMonth||S.apiMonth.month!==localMonthKey())S.a
 function saveApiMonth(){ensureApiMonth();localStorage.setItem(K_API_MONTH,JSON.stringify(S.apiMonth))}
 function getModelUsage(model){ensureApiMonth();if(!S.apiMonth.models[model])S.apiMonth.models[model]={calls:0,inputTokens:0,cachedTokens:0,cacheWriteTokens:0,outputTokens:0,costUSD:0};return S.apiMonth.models[model]}
 function estimateUsageCost(model,u){const p=MODEL_PRICES[model];if(!p||!u)return 0;const input=Number(u.input_tokens||0),cached=Number(u.input_tokens_details?.cached_tokens||0),write=Number(u.input_tokens_details?.cache_write_tokens||0),normal=Math.max(0,input-cached-write),output=Number(u.output_tokens||0);return (normal*p.input+cached*p.cached+write*p.cacheWrite+output*p.output)/1_000_000}
-function recordResponseUsage(model,response){ensureApiMonth();const b=getModelUsage(model||"unknown"),u=response?.usage;b.calls++;S.apiMonth.calls++;if(u){const input=Number(u.input_tokens||0),cached=Number(u.input_tokens_details?.cached_tokens||0),write=Number(u.input_tokens_details?.cache_write_tokens||0),output=Number(u.output_tokens||0);b.inputTokens+=input;b.cachedTokens+=cached;b.cacheWriteTokens+=write;b.outputTokens+=output;b.costUSD+=estimateUsageCost(model,u);S.apiMonth.inputTokens+=input;S.apiMonth.outputTokens+=output}saveApiMonth();renderApiUsage()}
+function recordResponseUsage(model,response){applyServerUsage(response?._vocabwalk_usage);ensureApiMonth();const b=getModelUsage(model||"unknown"),u=response?.usage;b.calls++;S.apiMonth.calls++;if(u){const input=Number(u.input_tokens||0),cached=Number(u.input_tokens_details?.cached_tokens||0),write=Number(u.input_tokens_details?.cache_write_tokens||0),output=Number(u.output_tokens||0);b.inputTokens+=input;b.cachedTokens+=cached;b.cacheWriteTokens+=write;b.outputTokens+=output;b.costUSD+=estimateUsageCost(model,u);S.apiMonth.inputTokens+=input;S.apiMonth.outputTokens+=output}saveApiMonth();renderApiUsage()}
 function noteMonthlyCacheHit(){ensureApiMonth();S.apiMonth.cacheHits=(S.apiMonth.cacheHits||0)+1;saveApiMonth();renderApiUsage()}
-function photoRemaining(){ensureApiMonth();return Math.max(0,MONTHLY_PHOTO_LIMIT-Number(S.apiMonth.photoUsed||0))}
+function applyServerUsage(usage){
+  if(!usage||typeof usage!=="object")return;
+  if(usage.durable){
+    S.serverUsage={
+      durable:true,
+      month:String(usage.month||localMonthKey()),
+      photoUsed:Number(usage.photo_used||0),
+      photoLimit:Number(usage.photo_limit||MONTHLY_PHOTO_LIMIT),
+      remaining:Number.isFinite(Number(usage.remaining))?Number(usage.remaining):null,
+      aiCalls:Number(usage.ai_calls||0)
+    };
+  }else if(S.serverUsage?.durable){
+    // keep the last durable value for this session instead of accidentally
+    // falling back to a resettable browser counter.
+  }
+  renderApiUsage();
+  renderPhotoQuota();
+}
+function effectivePhotoLimit(){
+  return S.serverUsage?.durable?Number(S.serverUsage.photoLimit||MONTHLY_PHOTO_LIMIT):MONTHLY_PHOTO_LIMIT;
+}
+function effectivePhotoUsed(){
+  ensureApiMonth();
+  return S.serverUsage?.durable?Number(S.serverUsage.photoUsed||0):Number(S.apiMonth.photoUsed||0);
+}
+function photoRemaining(){
+  return Math.max(0,effectivePhotoLimit()-effectivePhotoUsed());
+}
 function canUsePhotos(n){return Number(n||0)<=photoRemaining()}
-function consumePhotoUnit(n=1){ensureApiMonth();S.apiMonth.photoUsed=Math.min(MONTHLY_PHOTO_LIMIT,Number(S.apiMonth.photoUsed||0)+Number(n||0));saveApiMonth();renderApiUsage();renderPhotoQuota()}
+function consumePhotoUnit(n=1){
+  ensureApiMonth();
+  S.apiMonth.photoUsed=Math.min(MONTHLY_PHOTO_LIMIT,Number(S.apiMonth.photoUsed||0)+Number(n||0));
+  saveApiMonth();renderApiUsage();renderPhotoQuota();
+}
 function totalApiCost(){ensureApiMonth();return Object.values(S.apiMonth.models||{}).reduce((s,x)=>s+Number(x.costUSD||0),0)}
 function compactUsageNum(n){n=Number(n||0);if(n>=1_000_000)return (n/1_000_000).toFixed(2)+"M";if(n>=1_000)return (n/1_000).toFixed(1)+"K";return String(Math.round(n))}
-function renderApiUsage(){ensureApiMonth();if(!$("#apiUsageMonth"))return;const used=Number(S.apiMonth.photoUsed||0),remain=photoRemaining();$("#apiUsageMonth").textContent=S.apiMonth.month;$("#photoUsedCount").textContent=used;$("#photoRemainingCount").textContent=`${remain}장 남음`;$("#photoQuotaBar").style.width=`${Math.min(100,used/MONTHLY_PHOTO_LIMIT*100)}%`;$("#apiMonthlyCalls").textContent=compactUsageNum(S.apiMonth.calls);$("#apiMonthlyCacheHits").textContent=compactUsageNum(S.apiMonth.cacheHits);$("#apiMonthlyInput").textContent=compactUsageNum(S.apiMonth.inputTokens);$("#apiMonthlyOutput").textContent=compactUsageNum(S.apiMonth.outputTokens);const luna=S.apiMonth.models["gpt-5.6-luna"]||{},terra=S.apiMonth.models["gpt-5.6-terra"]||{};$("#apiLunaUsage").textContent=`${luna.calls||0}회 · $${Number(luna.costUSD||0).toFixed(4)}`;$("#apiTerraUsage").textContent=`${terra.calls||0}회 · $${Number(terra.costUSD||0).toFixed(4)}`;$("#apiEstimatedCost").textContent=`$${totalApiCost().toFixed(4)}`}
-function renderPhotoQuota(){ensureApiMonth();const hint=$("#photoQuotaHint"),btn=$("#analyzeBtn");if(!hint||!btn)return;const used=Number(S.apiMonth.photoUsed||0),remain=photoRemaining();hint.textContent=remain>0?`이번 달 사진 ${used} / ${MONTHLY_PHOTO_LIMIT}장 · ${remain}장 남음`:"이번 달 사진 150장을 모두 사용했어. 다음 달 1일에 초기화돼.";hint.classList.toggle("limit",remain===0);btn.classList.toggle("quota-blocked",remain===0);btn.disabled=!S.photos.length||remain===0}
+function renderApiUsage(){ensureApiMonth();if(!$("#apiUsageMonth"))return;const used=effectivePhotoUsed(),limit=effectivePhotoLimit(),remain=photoRemaining();$("#apiUsageMonth").textContent=S.serverUsage?.durable?(S.serverUsage.month||localMonthKey()):S.apiMonth.month;$("#photoUsedCount").textContent=used;$("#photoQuotaTotal").textContent=limit;$("#photoRemainingCount").textContent=`${remain}장 남음`;$("#photoQuotaBar").style.width=`${Math.min(100,used/Math.max(1,limit)*100)}%`;const scope=$("#apiUsageScope");if(scope)scope.textContent=S.serverUsage?.durable?"서버에서 강제 제한 중":"이 기기 기준 · D1 연결 시 서버 제한";$("#apiMonthlyCalls").textContent=compactUsageNum(S.apiMonth.calls);$("#apiMonthlyCacheHits").textContent=compactUsageNum(S.apiMonth.cacheHits);$("#apiMonthlyInput").textContent=compactUsageNum(S.apiMonth.inputTokens);$("#apiMonthlyOutput").textContent=compactUsageNum(S.apiMonth.outputTokens);const luna=S.apiMonth.models["gpt-5.6-luna"]||{},terra=S.apiMonth.models["gpt-5.6-terra"]||{};$("#apiLunaUsage").textContent=`${luna.calls||0}회 · $${Number(luna.costUSD||0).toFixed(4)}`;$("#apiTerraUsage").textContent=`${terra.calls||0}회 · $${Number(terra.costUSD||0).toFixed(4)}`;$("#apiEstimatedCost").textContent=`$${totalApiCost().toFixed(4)}`}
+function renderPhotoQuota(){ensureApiMonth();const hint=$("#photoQuotaHint"),btn=$("#analyzeBtn");if(!hint||!btn)return;const used=effectivePhotoUsed(),limit=effectivePhotoLimit(),remain=photoRemaining();hint.textContent=remain>0?`이번 달 사진 ${used} / ${limit}장 · ${remain}장 남음${S.serverUsage?.durable?" · 서버 기준":""}`:`이번 달 사진 ${limit}장을 모두 사용했어. 다음 달 1일에 초기화돼.`;hint.classList.toggle("limit",remain===0);btn.classList.toggle("quota-blocked",remain===0);btn.disabled=!S.photos.length||remain===0}
 function statsToday(){
   const d=new Date().toISOString().slice(0,10);
   if(S.apiStats.date!==d)S.apiStats={date:d,calls:0,cacheHits:0};
@@ -749,7 +781,7 @@ async function parseAIJSONOrRepair(t,kind="generic"){
     text:{verbosity:"low"},
     max_output_tokens:4200,
     input:prompt
-  },{timeoutMs:25000,retries:0}));
+  },{timeoutMs:40000,retries:0}));
   const parsed2=tryParseAIJSON(repaired);
   if(parsed2)return normalizeExtractedData(parsed2);
   throw Error("AI 결과 형식이 조금 망가졌어. 다시 시도해줘.");
@@ -875,6 +907,7 @@ async function openai(body,{prefix=null,timeoutMs=75000,retries=0,precision=fals
       });
       clearTimeout(timer);
       const d=await r.json().catch(()=>({}));
+      if(d?._vocabwalk_usage)applyServerUsage(d._vocabwalk_usage);
       if(r.ok){recordResponseUsage(d._vocabwalk_model||taskModel(precision?"photo_precision":"fast"),d);return d;}
       const msg=d?.error||d?.error?.message||`AI 서버 오류 ${r.status}`;
       const retryable=r.status===429||r.status===408||r.status===500||r.status===502||r.status===503||r.status===504;
@@ -1387,7 +1420,7 @@ $("#analyzeBtn").onclick=async()=>{
           {type:"input_text",text:singlePhotoAccuracyPrompt(i+1)},
           {type:"input_image",image_url:photo.data,detail:"high"}
         ]}]
-      },{prefix:"analysis",timeoutMs:60000,retries:0});
+      },{prefix:"analysis",timeoutMs:78000,retries:0});
 
       let d=normalizeExtractedData(parseAIJSON(responseText(lunaResult)));
       consumePhotoUnit(1);
@@ -1940,7 +1973,7 @@ JSON만:{"verdict":"correct"|"almost"|"wrong","reason":"짧은 한국어 한 문
             text:{verbosity:"low"},
             max_output_tokens:220,
             input:prompt
-          },{timeoutMs:25000,retries:0})));
+          },{timeoutMs:40000,retries:0})));
           putGradeCache(w,a,d);
         }
       }
@@ -2443,7 +2476,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=083",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=084",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });

@@ -565,3 +565,18 @@ API 비용 절약 패치.
 - Apple touch icon 180x180 적용
 - favicon 32x32 적용
 - 투명 배경 V 로고(`icons/icon-transparent-512.png`)도 포함
+
+
+## BUILD 084 — 10-user concurrency hardening
+- 10명이 동시에 AI를 호출해도 한 Worker isolate에서 OpenAI로 한꺼번에 쏘지 않도록 soft concurrency queue 추가
+- 기본 동시 upstream 4개 (`MAX_OPENAI_CONCURRENCY`로 1~10 조절 가능)
+- OpenAI 429일 때만 서버에서 1회 짧게 재시도
+- 네트워크 오류/불명확한 오류는 중복 과금 위험 때문에 자동 재시도하지 않음
+- 텍스트 22초 / 사진 55초 Worker upstream timeout
+- 앱 timeout을 서버 queue까지 고려해 텍스트 40초 / 사진 78초로 조정
+- 초대코드별 기존 40회/분 burst 제한 유지
+- `USAGE_DB` D1 binding을 붙이면 초대코드별 월 사진 150장 제한을 서버에서 강제
+- D1 사용 시 브라우저 데이터 삭제/재설치로 150장 제한을 초기화할 수 없음
+- 실패한 사진 AI 요청은 서버 quota를 자동 환불
+- `/usage` endpoint 및 앱의 서버 사용량 표시 추가
+- D1이 없으면 기존 localStorage 150장 제한으로 자동 fallback
