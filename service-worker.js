@@ -1,9 +1,9 @@
-const CACHE="vocabwalk-v8-4-concurrency";
+const CACHE="vocabwalk-v8-5-retention";
 const ASSETS=[
   "./",
   "./index.html",
-  "./styles.css?v=084",
-  "./app.js?v=084",
+  "./styles.css?v=085",
+  "./app.js?v=085",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

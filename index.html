@@ -11,7 +11,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-32.png">
-  <link rel="stylesheet" href="./styles.css?v=084">
+  <link rel="stylesheet" href="./styles.css?v=085">
 </head>
 <body>
 <div class="study-mode-bar" aria-label="학습 언어 모드">
@@ -29,7 +29,7 @@
 </div>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.8.4 <span class="build-badge">BUILD 084</span></small>
+    <small>VOCABWALK AI · v0.8.5 <span class="build-badge">BUILD 085</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -52,6 +52,54 @@
       <div class="stat"><b id="totalStat">0</b><span>전체 단어</span></div>
       <div class="stat"><b id="weakStat">0</b><span>취약 단어</span></div>
       <div class="stat"><b id="accStat">-</b><span>테스트 정답률</span></div>
+    </div>
+
+    <div id="longTermCard" class="memory-engine-card">
+      <div class="memory-engine-top">
+        <div class="memory-engine-copy">
+          <div class="memory-title-row">
+            <span class="memory-mark">M</span>
+            <div>
+              <span class="eyebrow">LONG-TERM MEMORY</span>
+              <h3>장기기억 복습</h3>
+            </div>
+          </div>
+          <p id="longTermSummary">기억 간격을 계산하는 중…</p>
+        </div>
+        <label class="memory-switch" aria-label="장기기억 복습 켜기 또는 끄기">
+          <input id="longTermToggle" type="checkbox" checked>
+          <span class="memory-switch-ui"></span>
+        </label>
+      </div>
+      <div class="memory-schedule" aria-label="장기기억 복습 간격">
+        <span>1일</span><i></i><span>3일</span><i></i><span>7일</span><i></i><span>14일</span><i></i><span>30일+</span>
+      </div>
+      <div class="memory-engine-bottom">
+        <small id="longTermNext">앎 2회 이후에도 기억이 유지되는지 다시 확인해.</small>
+        <button id="longTermStartBtn" type="button">오늘 복습</button>
+      </div>
+    </div>
+
+    <div class="smart-study-row">
+      <button id="examPlanCard" class="smart-study-card exam-card" type="button">
+        <span id="examDDay" class="smart-chip">PLAN</span>
+        <div>
+          <span class="eyebrow">EXAM TARGET</span>
+          <b id="examPlanTitle">시험 목표 설정</b>
+          <small id="examPlanSummary">시험일과 범위를 정하면 하루 학습량을 계산해줘.</small>
+        </div>
+        <span class="smart-arrow">›</span>
+      </button>
+
+      <button id="growthCard" class="smart-study-card growth-card" type="button">
+        <span class="smart-chip">GROW</span>
+        <div>
+          <span class="eyebrow">MY GROWTH</span>
+          <b><span id="growthMasteredHome">0</span>개 장기기억 중</b>
+          <small id="growthSummaryHome">30일 유지 0개 · 이번 달 학습 0개</small>
+        </div>
+        <span class="smart-arrow">›</span>
+      </button>
     </div>
 
     <div id="rewardStrip" class="reward-strip">
@@ -260,6 +308,25 @@ compelling = 설득력 있는"></textarea>
 
     <button id="quickStudyBtn" class="big dark">⏱️ 지금 10분 공부 · 위험 단어부터</button>
 
+    <div id="reportExamCard" class="panel report-smart-panel">
+      <div class="section-head no-top">
+        <h3>🎯 시험 목표</h3>
+        <button id="reportExamEditBtn" class="link" type="button">설정</button>
+      </div>
+      <div id="reportExamSummary" class="report-plan-summary">시험 목표를 설정하면 D-Day와 하루 학습량을 계산해줘.</div>
+    </div>
+
+    <div class="panel report-smart-panel">
+      <div class="section-head no-top"><h3>📈 누적 성장</h3></div>
+      <div class="growth-report-grid">
+        <div><b id="growthLifetime">0</b><span>누적 등록</span></div>
+        <div><b id="growthLearned">0</b><span>학습 시작</span></div>
+        <div><b id="growthMastered">0</b><span>장기기억 중</span></div>
+        <div><b id="growth30">0</b><span>30일 단계</span></div>
+      </div>
+      <p id="growthReportNote" class="fine growth-report-note">학습할수록 장기기억 단계가 쌓여.</p>
+    </div>
+
     <div class="panel">
       <div class="section-head no-top"><h3>🚨 지금 가장 위험한 단어</h3></div>
       <div id="dangerWords" class="report-list"></div>
@@ -404,7 +471,7 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 084</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 085</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
@@ -490,6 +557,34 @@ compelling = 설득력 있는"></textarea>
   </div>
 </div>
 
+
+
+<div id="examPlanModal" class="modal-wrap hidden">
+  <div class="modal exam-plan-modal">
+    <span class="eyebrow">EXAM TARGET</span>
+    <h2>시험 목표</h2>
+    <p class="exam-plan-help">시험일과 범위를 정하면 현재 암기 상태를 바탕으로 오늘 필요한 학습량을 계산해.</p>
+
+    <label class="folder-edit-label" for="examPlanName">시험 이름</label>
+    <input id="examPlanName" class="folder-edit-input" type="text" maxlength="40" placeholder="예: 2학기 중간고사">
+
+    <label class="folder-edit-label" for="examPlanDate">시험 날짜</label>
+    <input id="examPlanDate" class="folder-edit-input" type="date">
+
+    <div class="exam-folder-head">
+      <label class="folder-edit-label">시험 범위</label>
+      <button id="examSelectAllFolders" class="link" type="button">전체 단어</button>
+    </div>
+    <div id="examFolderOptions" class="exam-folder-options"></div>
+    <p class="fine">폴더를 하나도 선택하지 않으면 현재 언어의 전체 단어가 범위가 돼.</p>
+
+    <div class="folder-modal-actions exam-actions">
+      <button id="examPlanDelete" class="folder-secondary-btn exam-delete-btn" type="button">목표 삭제</button>
+      <button id="examPlanCancel" class="folder-secondary-btn" type="button">취소</button>
+      <button id="examPlanSave" class="folder-primary-btn" type="button">저장</button>
+    </div>
+  </div>
+</div>
 
 <div id="folderEditModal" class="modal-wrap hidden">
   <div class="modal folder-edit-modal">
@@ -589,6 +684,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=084"></script>
+<script src="./app.js?v=085"></script>
 </body>
 </html>

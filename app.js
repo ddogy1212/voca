@@ -8,7 +8,13 @@ const STUDY_LANGS={
   zh:{code:"zh",name:"중국어",short:"중",emoji:"🇨🇳",tts:"zh-CN",kind:"minor",sampleTerm:"重要",sampleMeaning:"중요하다"}
 };
 function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-function freshMeta(){return {correct:0,wrong:0,lastStudy:null,streak:0}}
+function freshMeta(){return {
+  correct:0,wrong:0,lastStudy:null,streak:0,
+  longTermReview:true,
+  examPlan:null,
+  lifetimeAdded:0,
+  totalReviewEvents:0
+}}
 function freshReward(){return {date:"",reviewIds:[],testIds:[],transformKeys:[],claimed:false,history:[],seriesPieces:{},secretSeen:[]}}
 function freshCache(){return {items:{},order:[]}}
 function validStudyLang(x){return Object.prototype.hasOwnProperty.call(STUDY_LANGS,x)?x:"en"}
@@ -514,14 +520,217 @@ $("#revealRewardBtn").onclick=()=>{
   renderRewardStrip();
 };
 
-function renderHome(){
-  const due=S.words.filter(w=>(w.dueAt||0)<=now()),weak=S.words.filter(w=>weakness(w)>=45),tries=S.meta.correct+S.meta.wrong;
-  $("#dueHero").textContent=`복습 ${due.length}개`;$("#totalStat").textContent=S.words.length;$("#weakStat").textContent=weak.length;$("#accStat").textContent=tries?Math.round(S.meta.correct/tries*100)+"%":"-";$("#streak").textContent=S.meta.streak||0;
-  $("#heroSub").textContent=S.words.length?(due.length?"지금 복습할 단어부터 빠르게 털자.":"오늘 예정 복습은 끝났어."):"하단 ＋에서 사진을 추가해.";
-  renderRewardStrip();
-  const list=$("#dueList");if(!due.length){list.className="mini-list empty";list.textContent=S.words.length?"지금 밀린 복습은 없어.":"아직 단어가 없어."}
-  else{list.className="mini-list";list.innerHTML=due.sort((a,b)=>weakness(b)-weakness(a)).slice(0,5).map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`).join("")}
+function isLongTermOn(){
+  return S.meta.longTermReview!==false;
 }
+function longTermDueWords(words=S.words){
+  if(!isLongTermOn())return [];
+  return words.filter(w=>(w.goodCount||0)>=2 && (w.dueAt||0)<=now());
+}
+function activeDueWords(){
+  return S.words.filter(w=>{
+    if((w.dueAt||0)>now())return false;
+    if((w.goodCount||0)<2)return true;
+    return isLongTermOn();
+  });
+}
+function formatMemoryNext(){
+  if(!isLongTermOn())return "꺼짐 · 앎 2회가 되면 기존처럼 암기에서 졸업해.";
+  const graduated=S.words.filter(w=>(w.goodCount||0)>=2);
+  if(!graduated.length)return "앎 2회부터 1·3·7·14·30일 간격으로 기억을 다시 확인해.";
+  const due=longTermDueWords();
+  if(due.length)return `오늘 장기복습 ${due.length}개가 도착했어.`;
+  const next=graduated
+    .map(w=>Number(w.dueAt||0))
+    .filter(t=>t>now())
+    .sort((a,b)=>a-b)[0];
+  if(!next)return "장기기억 일정이 준비되어 있어.";
+  const days=Math.max(1,Math.ceil((next-now())/day(1)));
+  return `다음 장기복습까지 약 ${days}일 · 기억 간격은 점점 길어져.`;
+}
+function growthStats(){
+  const monthStart=(()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth(),1).getTime()})();
+  const learned=S.words.filter(w=>(w.seen||0)>0||(w.correct||0)>0||(w.goodCount||0)>0).length;
+  const mastered=S.words.filter(w=>(w.goodCount||0)>=2).length;
+  const held30=S.words.filter(w=>Number(w.memoryBestDays||0)>=30).length;
+  const thisMonth=S.words.filter(w=>Number(w.lastReviewedAt||0)>=monthStart).length;
+  return {
+    lifetime:Math.max(Number(S.meta.lifetimeAdded||0),S.words.length),
+    learned,mastered,held30,thisMonth
+  };
+}
+function examPlan(){
+  const p=S.meta.examPlan;
+  return p&&p.date? p:null;
+}
+function examRangeWords(plan=examPlan()){
+  if(!plan)return [];
+  const selected=Array.isArray(plan.folders)?plan.folders.filter(Boolean):[];
+  if(!selected.length)return [...S.words];
+  return S.words.filter(w=>selected.includes(sourceKey(w)));
+}
+function examDaysLeft(dateText){
+  if(!dateText)return null;
+  const parts=String(dateText).split("-").map(Number);
+  if(parts.length!==3||parts.some(x=>!Number.isFinite(x)))return null;
+  const target=new Date(parts[0],parts[1]-1,parts[2]).getTime();
+  const today=new Date();today.setHours(0,0,0,0);
+  return Math.ceil((target-today.getTime())/day(1));
+}
+function examPlanSnapshot(){
+  const plan=examPlan();
+  if(!plan)return null;
+  const words=examRangeWords(plan);
+  const readiness=words.length?Math.round(avg(words,wordReadiness)):0;
+  const need=words.filter(w=>wordReadiness(w)<75).length;
+  const days=examDaysLeft(plan.date);
+  const daily=days===null||days<0?0:Math.ceil(need/Math.max(1,days+1));
+  return {plan,words,readiness,need,days,daily};
+}
+function renderLongTermCard(){
+  const on=isLongTermOn(),toggle=$("#longTermToggle"),btn=$("#longTermStartBtn");
+  if(toggle)toggle.checked=on;
+  const due=longTermDueWords();
+  const graduated=S.words.filter(w=>(w.goodCount||0)>=2).length;
+  if($("#longTermSummary"))$("#longTermSummary").textContent=on
+    ? `${graduated}개 장기기억 관리 · 오늘 확인 ${due.length}개`
+    : "장기기억 복습이 꺼져 있어.";
+  if($("#longTermNext"))$("#longTermNext").textContent=formatMemoryNext();
+  if(btn){
+    btn.disabled=!on||!due.length;
+    btn.textContent=due.length?`오늘 ${due.length}개 복습`:"오늘 복습 완료";
+  }
+  $("#longTermCard")?.classList.toggle("memory-off",!on);
+}
+function renderExamPlanCard(){
+  const snap=examPlanSnapshot();
+  const chip=$("#examDDay"),title=$("#examPlanTitle"),summary=$("#examPlanSummary");
+  if(!snap){
+    if(chip)chip.textContent="PLAN";
+    if(title)title.textContent="시험 목표 설정";
+    if(summary)summary.textContent="시험일과 범위를 정하면 하루 학습량을 계산해줘.";
+    $("#examPlanCard")?.classList.remove("exam-active");
+    return;
+  }
+  $("#examPlanCard")?.classList.add("exam-active");
+  const d=snap.days;
+  if(chip)chip.textContent=d===0?"D-DAY":d>0?`D-${d}`:"종료";
+  if(title)title.textContent=snap.plan.name||"다음 시험";
+  if(summary){
+    summary.textContent=d<0
+      ? `시험일이 지났어 · 준비도 ${snap.readiness}%`
+      : `준비도 ${snap.readiness}% · 오늘 ${snap.daily}개 · 남은 취약 ${snap.need}개`;
+  }
+}
+function renderGrowthHome(){
+  const g=growthStats();
+  if($("#growthMasteredHome"))$("#growthMasteredHome").textContent=g.mastered;
+  if($("#growthSummaryHome"))$("#growthSummaryHome").textContent=`30일 단계 ${g.held30}개 · 이번 달 학습 ${g.thisMonth}개`;
+}
+function renderHome(){
+  const due=activeDueWords(),weak=S.words.filter(w=>weakness(w)>=45),tries=(S.meta.correct||0)+(S.meta.wrong||0);
+  $("#dueHero").textContent=`복습 ${due.length}개`;
+  $("#totalStat").textContent=S.words.length;
+  $("#weakStat").textContent=weak.length;
+  $("#accStat").textContent=tries?Math.round((S.meta.correct||0)/tries*100)+"%":"-";
+  $("#streak").textContent=S.meta.streak||0;
+  $("#heroSub").textContent=S.words.length
+    ? (due.length?"지금 복습할 단어부터 빠르게 털자.":"오늘 예정 복습은 끝났어.")
+    : "하단 ＋에서 사진을 추가해.";
+  renderLongTermCard();
+  renderExamPlanCard();
+  renderGrowthHome();
+  renderRewardStrip();
+  const list=$("#dueList");
+  if(!due.length){
+    list.className="mini-list empty";
+    list.textContent=S.words.length?"지금 밀린 복습은 없어.":"아직 단어가 없어.";
+  }else{
+    list.className="mini-list";
+    list.innerHTML=due
+      .sort((a,b)=>weakness(b)-weakness(a))
+      .slice(0,5)
+      .map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`)
+      .join("");
+  }
+}
+
+$("#longTermToggle").onchange=e=>{
+  S.meta.longTermReview=!!e.target.checked;
+  save();
+  renderLongTermCard();
+  toast(S.meta.longTermReview
+    ?"🧠 장기기억 복습 ON · 앎 2회 이후에도 기억을 관리해."
+    :"장기기억 복습 OFF · 기존 졸업 방식으로 돌아갔어.");
+};
+$("#longTermStartBtn").onclick=()=>{
+  const due=longTermDueWords();
+  if(!due.length)return toast("오늘 예정된 장기복습은 끝났어.");
+  S.reviewRangeMode="all";
+  S.reviewSource=null;
+  S.reviewPreset=due
+    .sort((a,b)=>(a.dueAt||0)-(b.dueAt||0))
+    .map(w=>w.id);
+  show("review");
+};
+$("#growthCard").onclick=()=>show("report");
+$("#examPlanCard").onclick=openExamPlanModal;
+
+
+function renderExamFolderOptions(){
+  syncFoldersFromWords();
+  const selected=new Set(Array.isArray(S.meta.examPlan?.folders)?S.meta.examPlan.folders:[]);
+  const groups=sourceGroups().filter(([name])=>name!=="출처 미지정");
+  const wrap=$("#examFolderOptions");
+  if(!wrap)return;
+  wrap.innerHTML=groups.length
+    ? groups.map(([name,words])=>`<label class="exam-folder-option">
+        <input type="checkbox" value="${esc(name)}" ${selected.has(name)?"checked":""}>
+        <span><b>${esc(name)}</b><small>${words.length}개 단어</small></span>
+      </label>`).join("")
+    : `<div class="fine">아직 폴더가 없어. 저장하면 전체 단어가 시험 범위가 돼.</div>`;
+}
+function openExamPlanModal(){
+  const plan=examPlan();
+  $("#examPlanName").value=plan?.name||"";
+  $("#examPlanDate").value=plan?.date||"";
+  renderExamFolderOptions();
+  $("#examPlanDelete").classList.toggle("hidden",!plan);
+  $("#examPlanModal").classList.remove("hidden");
+}
+function closeExamPlanModal(){
+  $("#examPlanModal").classList.add("hidden");
+}
+function selectedExamFolders(){
+  return $$("#examFolderOptions input[type=checkbox]:checked").map(x=>x.value);
+}
+$("#examPlanCancel").onclick=closeExamPlanModal;
+$("#examPlanModal").onclick=e=>{if(e.target.id==="examPlanModal")closeExamPlanModal()};
+$("#examSelectAllFolders").onclick=()=>{
+  $$("#examFolderOptions input[type=checkbox]").forEach(x=>x.checked=false);
+  toast("전체 단어를 시험 범위로 사용할게.");
+};
+$("#examPlanSave").onclick=()=>{
+  const name=String($("#examPlanName").value||"").trim()||"다음 시험";
+  const date=String($("#examPlanDate").value||"").trim();
+  if(!date)return toast("시험 날짜를 먼저 선택해줘.");
+  S.meta.examPlan={name,date,folders:selectedExamFolders()};
+  save();
+  closeExamPlanModal();
+  renderExamPlanCard();
+  toast("🎯 시험 목표 저장 완료");
+};
+$("#examPlanDelete").onclick=()=>{
+  if(!S.meta.examPlan)return closeExamPlanModal();
+  S.meta.examPlan=null;
+  save();
+  closeExamPlanModal();
+  renderExamPlanCard();
+  toast("시험 목표를 삭제했어.");
+};
+$("#reportExamEditBtn").onclick=openExamPlanModal;
+
+
 
 $("#apiBtn").onclick=()=>{
   renderApiUsage();renderBetaStatus();
@@ -1596,12 +1805,12 @@ function bindPickEditors(){
 }
 $("#selectAll").onclick=()=>$$("[data-pick]").forEach(x=>x.checked=true);
 function makeWord(x){
-  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,skipCount:0,testEnabled:true};
+  return {id:uid(),term:String(x.term||"").trim(),meanings:(x.meanings||[]).map(String).filter(Boolean),partOfSpeech:String(x.partOfSpeech||""),context:String(x.context||""),synonyms:x.synonyms||[],antonyms:x.antonyms||[],derivatives:x.derivatives||[],importance:Number(x.importance||2),sourceType:String(x.sourceType||"wordlist"),sourceLabel:String(x.sourceLabel||""),createdAt:now(),dueAt:now(),strength:0,stability:.5,seen:0,correct:0,wrong:0,star:false,goodCount:0,skipCount:0,testEnabled:true,memoryStage:0,memoryBestDays:0,graduatedAt:0};
 }
 function addWord(x){
   if(!x.term)return false;ensureFolder(x.sourceLabel);const old=S.words.find(w=>norm(w.term)===norm(x.term));
   if(old){old.meanings=[...new Set([...(old.meanings||[]),...(x.meanings||[])])];old.synonyms=[...new Set([...(old.synonyms||[]),...(x.synonyms||[])])];old.antonyms=[...new Set([...(old.antonyms||[]),...(x.antonyms||[])])];old.derivatives=[...new Set([...(old.derivatives||[]),...(x.derivatives||[])])];if(!old.context)old.context=x.context||"";return false}
-  S.words.push(makeWord(x));return true;
+  S.words.push(makeWord(x));S.meta.lifetimeAdded=Math.max(Number(S.meta.lifetimeAdded||0)+1,S.words.length);return true;
 }
 $("#savePicked").onclick=()=>{
   const d=S.extracted||{};
@@ -1612,29 +1821,107 @@ $("#savePicked").onclick=()=>{
 };
 
 /* review */
-function interval(w,g){if(g==="again"){w.strength=Math.max(0,(w.strength||0)-1);w.stability=Math.max(.3,(w.stability||.5)*.55);return 5*60000}if(g==="hard"){w.strength=Math.max(1,w.strength||0);w.stability=Math.min(90,(w.stability||.5)*1.45);return Math.max(30*60000,day(w.stability*.45))}w.strength=Math.min(6,(w.strength||0)+1);w.stability=Math.min(180,(w.stability||.5)*(2.05+w.strength*.08));return day(Math.max(1,w.stability))}
+const LONG_TERM_DAYS=[1,3,7,14,30,60,120,180];
+function interval(w,g){
+  if(g==="again"){
+    w.strength=Math.max(0,(w.strength||0)-1);
+    w.stability=Math.max(.3,(w.stability||.5)*.55);
+    return 5*60000;
+  }
+  if(g==="hard"){
+    w.strength=Math.max(1,w.strength||0);
+    w.stability=Math.min(90,(w.stability||.5)*1.45);
+    return Math.max(30*60000,day(w.stability*.45));
+  }
+  w.strength=Math.min(6,(w.strength||0)+1);
+  w.stability=Math.min(180,(w.stability||.5)*(2.05+w.strength*.08));
+  return day(Math.max(1,w.stability));
+}
+function longTermSchedule(w,g){
+  let stage=Math.max(0,Math.min(LONG_TERM_DAYS.length-1,Number(w.memoryStage||0)));
+  let days=1;
+  if(g==="good"){
+    stage=Math.min(LONG_TERM_DAYS.length-1,stage+1);
+    days=LONG_TERM_DAYS[stage];
+    w.memoryBestDays=Math.max(Number(w.memoryBestDays||0),days);
+    w.strength=Math.min(6,(w.strength||0)+1);
+  }else if(g==="hard"){
+    stage=Math.max(0,stage-1);
+    days=Math.max(1,Math.ceil(LONG_TERM_DAYS[stage]*.7));
+    w.strength=Math.max(1,w.strength||0);
+  }else{
+    stage=0;
+    days=1;
+    w.strength=Math.max(0,(w.strength||0)-1);
+  }
+  w.memoryStage=stage;
+  w.dueAt=now()+day(days);
+  return days;
+}
+function removeFutureReviewDuplicates(wordId){
+  if(!Array.isArray(S.reviewQueue))return;
+  const currentIndex=S.reviewIndex;
+  S.reviewQueue=S.reviewQueue.filter((item,idx)=>idx<=currentIndex||item.id!==wordId);
+}
 function applyMemory(w,g){
-  studyTouch();markReviewed(w);w.seen=(w.seen||0)+1;if(w.goodCount===undefined)w.goodCount=0;if(w.testEnabled===undefined)w.testEnabled=true;
+  studyTouch();
+  markReviewed(w);
+  S.meta.totalReviewEvents=Number(S.meta.totalReviewEvents||0)+1;
+  w.seen=(w.seen||0)+1;
+  if(w.goodCount===undefined)w.goodCount=0;
+  if(w.testEnabled===undefined)w.testEnabled=true;
+  if(w.memoryStage===undefined)w.memoryStage=0;
+  if(w.memoryBestDays===undefined)w.memoryBestDays=0;
+
+  const alreadyGraduated=(w.goodCount||0)>=2;
+
+  // 이미 '앎 2회'를 넘긴 단어는 장기기억 엔진이 독립적으로 관리한다.
+  if(alreadyGraduated && isLongTermOn()){
+    if(g==="again")w.wrong=(w.wrong||0)+1;
+    if(g==="good"){
+      rewardRecord("review",w.id);
+      w.correct=(w.correct||0)+1;
+      w.skipCount=Math.max(0,(w.skipCount||0)-1);
+    }
+    const days=longTermSchedule(w,g);
+    removeFutureReviewDuplicates(w.id);
+    save();
+    if(g==="good")toast(`🧠 ${w.term}: 기억 유지 확인 · ${days}일 후 다시`);
+    else if(g==="hard")toast(`🧠 ${w.term}: ${days}일 후 조금 더 빨리 확인`);
+    else toast(`🧠 ${w.term}: 내일 다시 확인`);
+    return;
+  }
+
   if(g==="again")w.wrong=(w.wrong||0)+1;
+
   if(g==="good"){
     rewardRecord("review",w.id);
     w.correct=(w.correct||0)+1;
     w.goodCount++;
     w.skipCount=Math.max(0,(w.skipCount||0)-1);
-    if(w.goodCount>=2){
-      if(w.testEnabled!==false)w.testEnabled=false;
 
-      // 같은 세션에서 '넘김' 가중치 때문에 미리 복제된 동일 단어도 즉시 제거.
-      // 현재 인덱스 이전은 유지하고, 이후에 남은 동일 id만 삭제한다.
-      if(Array.isArray(S.reviewQueue)){
-        const currentIndex=S.reviewIndex;
-        S.reviewQueue=S.reviewQueue.filter((item,idx)=>idx<=currentIndex || item.id!==w.id);
+    if(w.goodCount>=2){
+      w.goodCount=2;
+      w.testEnabled=false;
+      if(!w.graduatedAt)w.graduatedAt=now();
+      removeFutureReviewDuplicates(w.id);
+
+      if(isLongTermOn()){
+        // 짧은 암기는 끝났지만, 3일 뒤부터 장기기억 검사를 시작한다.
+        w.memoryStage=Math.max(1,Number(w.memoryStage||0));
+        w.memoryBestDays=Math.max(3,Number(w.memoryBestDays||0));
+        w.dueAt=now()+day(3);
+        save();
+        toast(`🧠 ${w.term}: 1차 암기 완료 · 3일 후 장기기억 확인`);
+        return;
       }
 
       toast(`✅ ${w.term}: 앎 2회 → 암기·시험 졸업`);
     }
   }
-  w.dueAt=now()+interval(w,g);save();
+
+  w.dueAt=now()+interval(w,g);
+  save();
 }
 function populateReviewFolderPicker(){
   syncFoldersFromWords();
@@ -1642,7 +1929,7 @@ function populateReviewFolderPicker(){
   const picker=$("#reviewFolderPicker");
 
   picker.innerHTML=groups.map(([name,words])=>{
-    const active=words.filter(w=>(w.goodCount||0)<2).length;
+    const active=words.filter(w=>(w.goodCount||0)<2||(isLongTermOn()&&(w.goodCount||0)>=2&&(w.dueAt||0)<=now())).length;
     return `<option value="${esc(name)}">${esc(name)} · ${active}개</option>`;
   }).join("");
 
@@ -1757,13 +2044,18 @@ function startReview(shuf=false){
     rangeWords=rangeWords.filter(w=>sourceKey(w)===S.reviewSource);
   }
 
-  const availableForReview=rangeWords.filter(w=>(w.goodCount||0)<2);
+  const availableForReview=rangeWords.filter(w=>
+    (w.goodCount||0)<2 ||
+    (isLongTermOn() && (w.goodCount||0)>=2 && (w.dueAt||0)<=now())
+  );
 
   if(!availableForReview.length && !(Array.isArray(S.reviewPreset)&&S.reviewPreset.length)){
     $("#reviewEmpty").classList.remove("hidden");
     $("#reviewArea").classList.add("hidden");
     $("#reviewEmpty h3").textContent=S.reviewRangeMode==="folder"?"이 폴더에 암기할 단어가 없어":"현재 암기할 단어가 없어";
-    $("#reviewEmpty p").textContent="‘앎’ 2회가 된 단어는 암기에서 졸업해. 보관함에서 ‘시험 넣기’를 누르면 다시 시작할 수 있어.";
+    $("#reviewEmpty p").textContent=isLongTermOn()
+      ?"새 단어와 오늘 예정된 장기복습을 모두 끝냈어."
+      :"‘앎’ 2회가 된 단어는 암기에서 졸업해. 장기기억 복습을 켜면 이후에도 기억을 확인할 수 있어.";
     return;
   }
 
@@ -1774,7 +2066,7 @@ function startReview(shuf=false){
   if(Array.isArray(S.reviewPreset)&&S.reviewPreset.length){
     base=S.reviewPreset
       .map(id=>S.words.find(w=>w.id===id))
-      .filter(w=>w&&(w.goodCount||0)<2);
+      .filter(w=>w&&((w.goodCount||0)<2 || (isLongTermOn()&&(w.goodCount||0)>=2)));
     S.reviewPreset=null;
   }else{
     const due=availableForReview
@@ -2397,6 +2689,29 @@ function renderReport(){
   $("#reportRecent").textContent=recent;
   $("#reportAccuracy").textContent=accuracy;
 
+  const exam=examPlanSnapshot();
+  const examSummary=$("#reportExamSummary");
+  if(examSummary){
+    if(!exam){
+      examSummary.innerHTML=`<b>아직 시험 목표가 없어.</b><small>시험 날짜와 범위를 설정하면 D-Day와 하루 학습량을 계산해줘.</small>`;
+      $("#reportExamEditBtn").textContent="설정";
+    }else{
+      const rangeName=exam.plan.folders?.length?exam.plan.folders.join(" · "):"전체 단어";
+      const dText=exam.days===0?"D-DAY":exam.days>0?`D-${exam.days}`:"시험일 지남";
+      examSummary.innerHTML=`<b>${esc(exam.plan.name||"다음 시험")} · ${dText}</b><small>${esc(rangeName)} · 준비도 ${exam.readiness}% · 오늘 ${exam.daily}개 · 남은 취약 ${exam.need}개</small>`;
+      $("#reportExamEditBtn").textContent="수정";
+    }
+  }
+
+  const growth=growthStats();
+  $("#growthLifetime").textContent=growth.lifetime;
+  $("#growthLearned").textContent=growth.learned;
+  $("#growthMastered").textContent=growth.mastered;
+  $("#growth30").textContent=growth.held30;
+  $("#growthReportNote").textContent=isLongTermOn()
+    ?`장기기억 복습 ON · 이번 달 ${growth.thisMonth}개 단어를 학습했어.`
+    :`장기기억 복습 OFF · 이번 달 ${growth.thisMonth}개 단어를 학습했어.`;
+
   const danger=[...S.words].sort((a,b)=>weakness(b)-weakness(a)).slice(0,8);
   $("#dangerWords").innerHTML=danger.length?danger.map(w=>`<div class="report-row">
     <div class="main"><b>${esc(w.term)}</b><small>${esc((w.meanings||[]).join(", "))} · 넘김 ${w.skipCount||0} · 오답 ${w.wrong||0}</small></div>
@@ -2443,7 +2758,7 @@ function renderLibrary(){
 $("#search").oninput=renderLibrary;$$(".filter").forEach(b=>b.onclick=()=>{$$(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");S.filter=b.dataset.filter;renderLibrary()});
 $("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:6,studyLang:S.studyLang,languageName:langCfg().name,words:S.words,meta:S.meta,folders:S.folders},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`VocabWalk-${S.studyLang}-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href)};
 $("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");const backupLang=d.studyLang?validStudyLang(d.studyLang):"en";if(backupLang!==S.studyLang&&!confirm(`이 백업은 ${STUDY_LANGS[backupLang].name} 모드 데이터야. 현재 ${langCfg().name} 모드에 넣으면 언어가 섞일 수 있어. 그래도 불러올까?`))return;S.words=d.words;S.meta=d.meta||S.meta;S.folders=Array.isArray(d.folders)?d.folders:S.folders;migrate();save();renderLibrary();toast(`${langCfg().name} 모드에 ${S.words.length}개 복원`)}catch(err){toast(err.message)}finally{e.target.value=""}};
-$("#clearBtn").onclick=()=>{if(confirm(`정말 ${langCfg().name} 모드의 모든 단어와 학습 기록을 삭제할까? 다른 언어 모드는 지워지지 않아.`)){S.words=[];S.meta={correct:0,wrong:0,lastStudy:null,streak:0};S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
+$("#clearBtn").onclick=()=>{if(confirm(`정말 ${langCfg().name} 모드의 모든 단어와 학습 기록을 삭제할까? 다른 언어 모드는 지워지지 않아.`)){S.words=[];S.meta=freshMeta();S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
 
 $("#sampleBtn").onclick=()=>{const samples={
   en:[{term:"reinforce",meanings:["강화하다","보강하다"],partOfSpeech:"v.",synonyms:["strengthen","bolster"],antonyms:["weaken"],derivatives:["reinforcement"]},{term:"undermine",meanings:["약화시키다","훼손하다"],partOfSpeech:"v."},{term:"compelling",meanings:["설득력 있는","매우 흥미로운"],partOfSpeech:"adj."}],
@@ -2462,21 +2777,31 @@ $("#closeInstallBtn").onclick=()=>$("#installModal").classList.add("hidden");
 $("#nativeInstallBtn").onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$("#installModal").classList.add("hidden")};
 
 function migrate(){
+  if(!S.meta||typeof S.meta!=="object")S.meta=freshMeta();
+  if(typeof S.meta.longTermReview!=="boolean")S.meta.longTermReview=true;
+  if(!("examPlan" in S.meta))S.meta.examPlan=null;
+  if(!Number.isFinite(Number(S.meta.lifetimeAdded)))S.meta.lifetimeAdded=0;
+  if(!Number.isFinite(Number(S.meta.totalReviewEvents)))S.meta.totalReviewEvents=0;
+
   for(const w of S.words){
     if(w.testEnabled===undefined)w.testEnabled=true;
     if(w.goodCount===undefined)w.goodCount=0;
     if(w.skipCount===undefined)w.skipCount=0;
     if(w.lastReviewedAt===undefined)w.lastReviewedAt=0;
+    if(w.memoryStage===undefined)w.memoryStage=0;
+    if(w.memoryBestDays===undefined)w.memoryBestDays=0;
+    if(w.graduatedAt===undefined)w.graduatedAt=(w.goodCount||0)>=2?(w.lastReviewedAt||0):0;
     if(!Array.isArray(w.synonyms))w.synonyms=[];
     if(!Array.isArray(w.antonyms))w.antonyms=[];
     if(!Array.isArray(w.derivatives))w.derivatives=[];
   }
+  S.meta.lifetimeAdded=Math.max(Number(S.meta.lifetimeAdded||0),S.words.length);
 }
 migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();saveGradeCache();savePhotoCache();saveApiStats();ensureApiMonth();saveApiMonth();updateStudyLanguageUI();save();renderRewardStrip();renderApiUsage();renderPhotoQuota();renderBetaStatus();if(!S.betaCode)setTimeout(()=>$("#apiModal").classList.remove("hidden"),350);
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=084",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=085",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
