@@ -1125,3 +1125,10 @@ body.minor-study-mode .precision-btn{background:#5c47a8;color:#fff;border-color:
   .exam-actions{grid-template-columns:1fr 1fr}
   .exam-delete-btn{grid-column:1/-1}
 }
+
+
+/* BUILD 086 · home layout cleanup */
+#home > .smart-study-row{
+  margin-top:18px;
+  margin-bottom:0;
+}

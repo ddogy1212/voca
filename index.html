@@ -11,7 +11,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-32.png">
-  <link rel="stylesheet" href="./styles.css?v=085">
+  <link rel="stylesheet" href="./styles.css?v=086">
 </head>
 <body>
 <div class="study-mode-bar" aria-label="학습 언어 모드">
@@ -29,7 +29,7 @@
 </div>
 <header class="top">
   <div>
-    <small>VOCABWALK AI · v0.8.5 <span class="build-badge">BUILD 085</span></small>
+    <small>VOCABWALK AI · v0.8.6 <span class="build-badge">BUILD 086</span></small>
     <h1>단어를 걷는 동안 외우자.</h1>
   </div>
   <div class="top-actions">
@@ -80,27 +80,6 @@
       </div>
     </div>
 
-    <div class="smart-study-row">
-      <button id="examPlanCard" class="smart-study-card exam-card" type="button">
-        <span id="examDDay" class="smart-chip">PLAN</span>
-        <div>
-          <span class="eyebrow">EXAM TARGET</span>
-          <b id="examPlanTitle">시험 목표 설정</b>
-          <small id="examPlanSummary">시험일과 범위를 정하면 하루 학습량을 계산해줘.</small>
-        </div>
-        <span class="smart-arrow">›</span>
-      </button>
-
-      <button id="growthCard" class="smart-study-card growth-card" type="button">
-        <span class="smart-chip">GROW</span>
-        <div>
-          <span class="eyebrow">MY GROWTH</span>
-          <b><span id="growthMasteredHome">0</span>개 장기기억 중</b>
-          <small id="growthSummaryHome">30일 유지 0개 · 이번 달 학습 0개</small>
-        </div>
-        <span class="smart-arrow">›</span>
-      </button>
-    </div>
 
     <div id="rewardStrip" class="reward-strip">
       <div class="reward-strip-main">
@@ -139,12 +118,26 @@
       </button>
     </div>
 
-    <div class="panel">
-      <div class="section-head no-top">
-        <h3>먼저 볼 단어</h3>
-        <button id="sampleBtn" class="link">샘플 넣기</button>
-      </div>
-      <div id="dueList" class="mini-list empty">아직 단어가 없어.</div>
+    <div class="smart-study-row">
+      <button id="examPlanCard" class="smart-study-card exam-card" type="button">
+        <span id="examDDay" class="smart-chip">PLAN</span>
+        <div>
+          <span class="eyebrow">EXAM TARGET</span>
+          <b id="examPlanTitle">시험 목표 설정</b>
+          <small id="examPlanSummary">시험일과 범위를 정하면 하루 학습량을 계산해줘.</small>
+        </div>
+        <span class="smart-arrow">›</span>
+      </button>
+
+      <button id="growthCard" class="smart-study-card growth-card" type="button">
+        <span class="smart-chip">GROW</span>
+        <div>
+          <span class="eyebrow">MY GROWTH</span>
+          <b><span id="growthMasteredHome">0</span>개 장기기억 중</b>
+          <small id="growthSummaryHome">30일 유지 0개 · 이번 달 학습 0개</small>
+        </div>
+        <span class="smart-arrow">›</span>
+      </button>
     </div>
   </section>
 
@@ -471,7 +464,7 @@ compelling = 설득력 있는"></textarea>
 
 <div id="apiModal" class="modal-wrap hidden">
   <div class="modal">
-    <span class="eyebrow">PRIVATE BETA · BUILD 085</span>
+    <span class="eyebrow">PRIVATE BETA · BUILD 086</span>
     <h2>초대코드로 연결</h2>
     <p>OpenAI API 키는 이 폰에 저장하지 않아. 모든 AI 요청은 작은 Cloudflare Worker를 거쳐서 처리돼. GitHub에는 API 키가 들어가지 않아.</p>
     <div class="beta-security-note">🔒 기본 모델은 Luna 고정 · Sol 사용 안 함 · Terra는 직접 정밀 재검사를 눌렀을 때만 사용</div>
@@ -684,6 +677,6 @@ compelling = 설득력 있는"></textarea>
 </div>
 
 <div id="toast" class="toast"></div>
-<script src="./app.js?v=085"></script>
+<script src="./app.js?v=086"></script>
 </body>
 </html>

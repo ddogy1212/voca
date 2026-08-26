@@ -641,18 +641,6 @@ function renderHome(){
   renderExamPlanCard();
   renderGrowthHome();
   renderRewardStrip();
-  const list=$("#dueList");
-  if(!due.length){
-    list.className="mini-list empty";
-    list.textContent=S.words.length?"지금 밀린 복습은 없어.":"아직 단어가 없어.";
-  }else{
-    list.className="mini-list";
-    list.innerHTML=due
-      .sort((a,b)=>weakness(b)-weakness(a))
-      .slice(0,5)
-      .map(w=>`<div class="row"><b>${esc(w.term)}</b><span>${esc(w.meanings[0]||"")}</span></div>`)
-      .join("");
-  }
 }
 
 $("#longTermToggle").onchange=e=>{
@@ -2760,14 +2748,6 @@ $("#exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({version:6,stud
 $("#importFile").onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!Array.isArray(d.words))throw Error("올바른 백업이 아니야.");const backupLang=d.studyLang?validStudyLang(d.studyLang):"en";if(backupLang!==S.studyLang&&!confirm(`이 백업은 ${STUDY_LANGS[backupLang].name} 모드 데이터야. 현재 ${langCfg().name} 모드에 넣으면 언어가 섞일 수 있어. 그래도 불러올까?`))return;S.words=d.words;S.meta=d.meta||S.meta;S.folders=Array.isArray(d.folders)?d.folders:S.folders;migrate();save();renderLibrary();toast(`${langCfg().name} 모드에 ${S.words.length}개 복원`)}catch(err){toast(err.message)}finally{e.target.value=""}};
 $("#clearBtn").onclick=()=>{if(confirm(`정말 ${langCfg().name} 모드의 모든 단어와 학습 기록을 삭제할까? 다른 언어 모드는 지워지지 않아.`)){S.words=[];S.meta=freshMeta();S.folders=[];save();renderLibrary();toast("전체 삭제 완료")}};
 
-$("#sampleBtn").onclick=()=>{const samples={
-  en:[{term:"reinforce",meanings:["강화하다","보강하다"],partOfSpeech:"v.",synonyms:["strengthen","bolster"],antonyms:["weaken"],derivatives:["reinforcement"]},{term:"undermine",meanings:["약화시키다","훼손하다"],partOfSpeech:"v."},{term:"compelling",meanings:["설득력 있는","매우 흥미로운"],partOfSpeech:"adj."}],
-  ru:[{term:"помогать",meanings:["돕다"],partOfSpeech:"гл."},{term:"важный",meanings:["중요한"],partOfSpeech:"прил."},{term:"возможность",meanings:["가능성","기회"],partOfSpeech:"сущ."}],
-  ja:[{term:"大切",meanings:["소중함","중요함"]},{term:"助ける",meanings:["돕다"]},{term:"機会",meanings:["기회"]}],
-  fr:[{term:"important",meanings:["중요한"],partOfSpeech:"adj."},{term:"aider",meanings:["돕다"],partOfSpeech:"v."},{term:"possibilité",meanings:["가능성","기회"],partOfSpeech:"n."}],
-  zh:[{term:"重要",meanings:["중요하다","중요한"]},{term:"帮助",meanings:["돕다","도움"]},{term:"机会",meanings:["기회"]}]
-};const a=(samples[S.studyLang]||samples.en).map(x=>({...x,sourceType:"sample",sourceLabel:"샘플"}));let n=0;a.forEach(x=>{if(addWord(x))n++});save();toast(`${langCfg().name} 샘플 ${n}개 추가`)};
-
 /* PWA install */
 let deferredPrompt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e});
@@ -2801,7 +2781,7 @@ migrate();syncFoldersFromWords();saveFolders();ensureRewardDay();saveReward();sa
 if("serviceWorker"in navigator){
   window.addEventListener("load",async()=>{
     try{
-      const reg=await navigator.serviceWorker.register("./service-worker.js?v=085",{updateViaCache:"none"});
+      const reg=await navigator.serviceWorker.register("./service-worker.js?v=086",{updateViaCache:"none"});
       await reg.update();
     }catch(e){console.warn("SW update failed",e)}
   });
